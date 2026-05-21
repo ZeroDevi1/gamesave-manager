@@ -103,10 +103,8 @@ const useStyles = makeStyles({
     marginBottom: '12px',
   },
   fileNameCell: {
-    maxWidth: '400px',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
+    minWidth: '360px',
+    wordBreak: 'break-all',
   },
 })
 

@@ -44,7 +44,8 @@ pub mod commands {
 
         let mut need_save = false;
         for game in &mut config.games {
-            if game.logo_path.is_some() {
+            // 已有 HTTP 远程封面 URL 则跳过；本地路径或缺失则重新获取
+            if game.logo_path.as_ref().map(|p| p.starts_with("http")).unwrap_or(false) {
                 continue;
             }
 
