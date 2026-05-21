@@ -31,6 +31,9 @@ jobs:
         with:
           workspaces: core
 
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --locked
+
       - name: Install frontend dependencies
         run: cd ui && npm ci
 
