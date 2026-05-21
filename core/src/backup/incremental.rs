@@ -78,9 +78,8 @@ pub async fn perform_incremental_backup(
                 // 上传到 Alist（引入动态路由拼接，无缝支持自定义备份根路径）
                 let base_remote_path = config.get_game_remote_path(game);
                 let remote_dir = format!(
-                    "{}/{}/incremental/{}/",
+                    "{}/incremental/{}/",
                     base_remote_path.trim_end_matches('/'),
-                    game_id,
                     ts_str
                 );
                 let remote_path = format!("{}{}", remote_dir, rel_path);
@@ -120,9 +119,8 @@ pub async fn perform_incremental_backup(
     // 保存新 manifest（已删除文件不再包含，达到标记删除的效果，同时使用动态根目录路由）
     let base_remote_path = config.get_game_remote_path(game);
     let remote_base = format!(
-        "{}/{}/incremental/{}",
+        "{}/incremental/{}",
         base_remote_path.trim_end_matches('/'),
-        game_id,
         ts_str
     );
     let manifest = BackupManifest {

@@ -92,7 +92,7 @@ pub mod commands {
             id: id.clone(),
             name: name.clone(),
             save_paths: save_paths.clone(),
-            remote_path: format!("/GameSaves/{}", id),
+            remote_path: format!("/GameSaves/{}", name),
             last_backup: None,
             logo_path: None,
             steam_appid: None,

@@ -97,7 +97,7 @@ pub mod commands {
         let base_remote_path = config.get_game_remote_path(game);
         let alist = config.alist.ok_or("未配置 Alist")?;
         let token = alist.token.ok_or("未登录 Alist")?;
-        let remote_dir = format!("{}/{}/full/", base_remote_path.trim_end_matches('/'), game_id);
+        let remote_dir = format!("{}/full/", base_remote_path.trim_end_matches('/'));
 
         let entries = crate::alist::fs::list_dir(&alist.base_url, &token, &remote_dir)
             .await

@@ -94,7 +94,7 @@ pub async fn perform_full_backup(app: &AppHandle, game_id: &str) -> anyhow::Resu
 
     // 上传到 Alist（引入动态路由拼接，无缝支持自定义备份根路径）
     let base_remote_path = config.get_game_remote_path(game);
-    let remote_dir = format!("{}/{}/full/", base_remote_path.trim_end_matches('/'), game_id);
+    let remote_dir = format!("{}/full/", base_remote_path.trim_end_matches('/'));
     let remote_path = format!("{}{}", remote_dir, zip_name);
 
     if let Some(alist) = config.alist {
