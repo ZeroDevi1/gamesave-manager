@@ -68,7 +68,12 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: '24px',
     minHeight: '100%',
-    backgroundColor: tokens.colorNeutralBackground2, // 云母底色
+    backgroundColor: tokens.colorNeutralBackground2,
+    overflowY: 'auto',
+    scrollbarWidth: 'none',
+    '::-webkit-scrollbar': {
+      display: 'none',
+    },
   },
   header: {
     display: 'flex',
@@ -148,6 +153,12 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: '20px',
     minWidth: '520px',
+    maxHeight: '70vh',
+    overflowY: 'auto',
+    scrollbarWidth: 'none',
+    '::-webkit-scrollbar': {
+      display: 'none',
+    },
   },
   importTextarea: {
     minHeight: '220px',
@@ -224,6 +235,10 @@ const useStyles = makeStyles({
     display: 'flex',
     flexDirection: 'column',
     overflowY: 'auto',
+    scrollbarWidth: 'none',
+    '::-webkit-scrollbar': {
+      display: 'none',
+    },
     paddingRight: '4px',
   },
   // 右侧详情玻璃面板 (占宽 1/3)
@@ -238,6 +253,10 @@ const useStyles = makeStyles({
     boxShadow: tokens.shadow16,
     padding: '24px',
     overflowY: 'auto',
+    scrollbarWidth: 'none',
+    '::-webkit-scrollbar': {
+      display: 'none',
+    },
     position: 'sticky',
     top: '0',
     alignSelf: 'start',

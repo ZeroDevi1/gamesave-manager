@@ -181,6 +181,10 @@ const useStyles = makeStyles({
   content: {
     flexGrow: 1,
     overflow: 'auto',
+    scrollbarWidth: 'none',
+    '::-webkit-scrollbar': {
+      display: 'none',
+    },
     backgroundColor: tokens.colorNeutralBackground2,
   },
 })

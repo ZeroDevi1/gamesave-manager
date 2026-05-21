@@ -28,66 +28,49 @@ pub mod commands {
     /// 获取游戏列表
     ///
     /// # 核心增强：
-    /// 自动植入后台静默封面补全协程：
-    /// 1. 对于已配置 steam_appid 但缺失 logo 的游戏，直接从 Steam CDN 拉取封面
-    /// 2. 对于未配置 steam_appid 的游戏，尝试通过游戏名称在游戏数据库中模糊匹配，
-    ///    若匹配到条目且该条目包含 steam_appid，则借用此 AppID 获取封面并补齐
-    /// 3. 全部静默持久化存盘，保证首页游戏卡片在加载后 2 秒内展现高清海报
+    /// 对于缺失 logo 的游戏，直接通过 Steam CDN 公开直链获取封面图，
+    /// 无需等待异步下载到本地。优先使用游戏自身配置的 steam_appid；
+    /// 若未配置，则通过游戏名称在数据库中模糊匹配借用 AppID。
+    /// 图片 URL 会同步写入配置并持久化，保证首页卡片首次加载即有图标。
     #[tauri::command]
     pub fn get_games(app: AppHandle) -> Result<Vec<crate::config::model::GameConfig>, String> {
-        let config = crate::config::load_config(&app).map_err(|e| e.to_string())?;
-        let games_clone = config.games.clone();
+        let mut config = crate::config::load_config(&app).map_err(|e| e.to_string())?;
 
-        // 加载游戏数据库供后台匹配使用
+        // 加载游戏数据库供匹配使用
         let game_db = match crate::game::db::load_db(&app) {
             Ok(db) => db,
             Err(_) => crate::game::db::GameDatabase::default(),
         };
 
-        // 启动后台静默微协程，对缺失 logo_path 的游戏进行全自动补全
-        let app_handle_clone = app.clone();
-        tauri::async_runtime::spawn(async move {
-            let mut need_save = false;
-            let mut current_config = match crate::config::load_config(&app_handle_clone) {
-                Ok(c) => c,
-                Err(_) => return,
-            };
-
-            for game in &mut current_config.games {
-                if game.logo_path.is_some() {
-                    continue;
-                }
-
-                let appid = if let Some(id) = game.steam_appid {
-                    Some(id)
-                } else {
-                    // 通过游戏名在数据库中模糊匹配，借用 steam_appid
-                    let matches = crate::game::db::search_entries(&game_db, &game.name);
-                    matches.into_iter().next().and_then(|e| e.steam_appid)
-                };
-
-                if let Some(id) = appid {
-                    if let Ok(Some(logo_path)) = crate::game::metadata::fetch_logo(
-                        &app_handle_clone,
-                        &game.id,
-                        Some(id),
-                    )
-                    .await
-                    {
-                        game.logo_path = Some(logo_path);
-                        game.steam_appid = Some(id);
-                        need_save = true;
-                    }
-                }
+        let mut need_save = false;
+        for game in &mut config.games {
+            if game.logo_path.is_some() {
+                continue;
             }
 
-            // 仅在真实发生封面补全时才静默存盘
-            if need_save {
-                let _ = crate::config::save_config(&app_handle_clone, &current_config);
-            }
-        });
+            let appid = game.steam_appid.or_else(|| {
+                let matches = crate::game::db::search_entries(&game_db, &game.name);
+                matches.into_iter().next().and_then(|e| e.steam_appid)
+            });
 
-        Ok(games_clone)
+            if let Some(id) = appid {
+                // 直接使用 Steam CDN 公开直链，无需下载到本地
+                game.logo_path = Some(format!(
+                    "https://steamcdn-a.akamaihd.net/steam/apps/{}/library_600x900_2x.jpg",
+                    id
+                ));
+                if game.steam_appid.is_none() {
+                    game.steam_appid = Some(id);
+                }
+                need_save = true;
+            }
+        }
+
+        if need_save {
+            let _ = crate::config::save_config(&app, &config);
+        }
+
+        Ok(config.games)
     }
 
     /// 添加游戏

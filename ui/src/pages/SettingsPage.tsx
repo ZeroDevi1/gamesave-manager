@@ -6,6 +6,12 @@ const useStyles = makeStyles({
   root: {
     padding: '24px',
     maxWidth: '800px',
+    height: '100%',
+    overflowY: 'auto',
+    scrollbarWidth: 'none',
+    '::-webkit-scrollbar': {
+      display: 'none',
+    },
   },
 })
 

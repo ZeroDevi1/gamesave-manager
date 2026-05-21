@@ -1,4 +1,4 @@
-// pages/GameDetailPage.tsx - 游戏详情：存档列表、本地/远程备份历史、操作按钮
+// pages/GameDetailPage.tsx - 游戏详情：备份历史、存档列表、操作按钮
 import { useParams } from 'react-router-dom'
 import {
   makeStyles,
@@ -248,43 +248,6 @@ export default function GameDetailPage() {
         </div>
       </div>
 
-      {/* 存档文件列表 */}
-      <div className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <Title2>本地存档文件</Title2>
-          <Button size="small" onClick={() => scanGameSaves(game.id).then(setSaves)}>
-            刷新
-          </Button>
-        </div>
-        {savesLoading ? (
-          <Spinner label="扫描中..." />
-        ) : saves.length === 0 ? (
-          <div style={{ color: tokens.colorNeutralForeground3 }}>未找到存档文件</div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHeaderCell>文件</TableHeaderCell>
-                <TableHeaderCell>大小</TableHeaderCell>
-                <TableHeaderCell>修改时间</TableHeaderCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {saves.map((file) => (
-                <TableRow key={file.path}>
-                  <TableCell>
-                    <Document24Regular style={{ marginRight: '8px', verticalAlign: 'middle' }} />
-                    {file.relative_path}
-                  </TableCell>
-                  <TableCell>{formatBytes(file.size)}</TableCell>
-                  <TableCell>{new Date(file.modified_time).toLocaleString('zh-CN')}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </div>
-
       {/* 本地备份历史（第一位） */}
       <div className={styles.section}>
         <div className={styles.sectionHeader}>
@@ -380,6 +343,43 @@ export default function GameDetailPage() {
                       还原
                     </Button>
                   </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </div>
+
+      {/* 本地存档文件（移到最下方） */}
+      <div className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <Title2>本地存档文件</Title2>
+          <Button size="small" onClick={() => scanGameSaves(game.id).then(setSaves)}>
+            刷新
+          </Button>
+        </div>
+        {savesLoading ? (
+          <Spinner label="扫描中..." />
+        ) : saves.length === 0 ? (
+          <div style={{ color: tokens.colorNeutralForeground3 }}>未找到存档文件</div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHeaderCell>文件</TableHeaderCell>
+                <TableHeaderCell>大小</TableHeaderCell>
+                <TableHeaderCell>修改时间</TableHeaderCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {saves.map((file) => (
+                <TableRow key={file.path}>
+                  <TableCell>
+                    <Document24Regular style={{ marginRight: '8px', verticalAlign: 'middle' }} />
+                    {file.relative_path}
+                  </TableCell>
+                  <TableCell>{formatBytes(file.size)}</TableCell>
+                  <TableCell>{new Date(file.modified_time).toLocaleString('zh-CN')}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
