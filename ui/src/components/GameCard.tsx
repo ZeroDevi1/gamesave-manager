@@ -1,4 +1,4 @@
-// components/GameCard.tsx - 游戏卡片（放大版 + 图标展示 + 启动游戏）
+// components/GameCard.tsx - 游戏卡片（竖版 + 封面展示 + 启动游戏）
 import {
   Card,
   CardHeader,
@@ -19,7 +19,7 @@ import type { GameConfig } from '../services/tauri'
 
 const useStyles = makeStyles({
   card: {
-    width: '280px',
+    width: '200px',
     cursor: 'pointer',
     transition: 'transform 0.2s, box-shadow 0.2s',
     ':hover': {
@@ -28,7 +28,7 @@ const useStyles = makeStyles({
     },
   },
   preview: {
-    height: '180px',
+    height: '260px',
     backgroundColor: tokens.colorNeutralBackground1,
     display: 'flex',
     alignItems: 'center',
@@ -69,7 +69,6 @@ interface GameCardProps {
 function getLogoUrl(logoPath?: string): string {
   if (!logoPath) return ''
   if (logoPath.startsWith('http')) return logoPath
-  // Tauri v2 本地文件路径需使用 convertFileSrc 转换
   return convertFileSrc(logoPath)
 }
 
