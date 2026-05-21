@@ -31,6 +31,7 @@ import { useBackup } from '../hooks/useBackup'
 import { scanGameSaves, convertFileSrc } from '../services/tauri'
 import type { SaveFile } from '../services/tauri'
 import BackupDialog from '../components/BackupDialog'
+import RestoreDialog from '../components/RestoreDialog'
 
 const useStyles = makeStyles({
   root: {
@@ -101,6 +102,12 @@ const useStyles = makeStyles({
     justifyContent: 'space-between',
     marginBottom: '12px',
   },
+  fileNameCell: {
+    maxWidth: '400px',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
 })
 
 export default function GameDetailPage() {
@@ -111,6 +118,7 @@ export default function GameDetailPage() {
   const [saves, setSaves] = useState<SaveFile[]>([])
   const [savesLoading, setSavesLoading] = useState(false)
   const [backupOpen, setBackupOpen] = useState(false)
+  const [restoreOpen, setRestoreOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const game = games.find((g) => g.id === gameId)
@@ -147,22 +155,23 @@ export default function GameDetailPage() {
     }
   }
 
-  const handleRestore = async (timestamp: string) => {
+  const handleRestoreLocal = async (timestamp: string) => {
     try {
       await backup.restore(timestamp)
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
+      throw err
     }
   }
 
   const handleRestoreRemote = async (remoteZipPath: string) => {
-    if (!confirm('确定要从该远程备份恢复吗？当前本地存档将被覆盖（会自动先备份现有存档）。')) return
     try {
       await backup.restoreRemote(remoteZipPath)
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
+      throw err
     }
   }
 
@@ -216,15 +225,13 @@ export default function GameDetailPage() {
             >
               备份
             </Button>
-            {backup.history.length > 0 && (
-              <Button
-                icon={<ArrowDownload24Regular />}
-                onClick={() => handleRestore(backup.history[0].timestamp)}
-                disabled={backup.restoring}
-              >
-                恢复到最新
-              </Button>
-            )}
+            <Button
+              icon={<ArrowDownload24Regular />}
+              onClick={() => setRestoreOpen(true)}
+              disabled={backup.restoring}
+            >
+              恢复
+            </Button>
             <Button
               icon={<Delete24Regular />}
               appearance="subtle"
@@ -278,7 +285,7 @@ export default function GameDetailPage() {
         )}
       </div>
 
-      {/* 本地备份历史 */}
+      {/* 本地备份历史（第一位） */}
       <div className={styles.section}>
         <div className={styles.sectionHeader}>
           <Title2>本地备份历史</Title2>
@@ -318,7 +325,7 @@ export default function GameDetailPage() {
                     <Button
                       size="small"
                       icon={<ArrowDownload24Regular />}
-                      onClick={() => handleRestore(h.timestamp)}
+                      onClick={() => handleRestoreLocal(h.timestamp)}
                       disabled={backup.restoring}
                     >
                       恢复
@@ -331,7 +338,7 @@ export default function GameDetailPage() {
         )}
       </div>
 
-      {/* 远程备份（Alist 网盘） */}
+      {/* 远程备份（Alist 网盘）（第二位） */}
       <div className={styles.section}>
         <div className={styles.sectionHeader}>
           <Title2>远程备份（Alist 网盘）</Title2>
@@ -356,7 +363,9 @@ export default function GameDetailPage() {
             <TableBody>
               {backup.remoteBackups.map((rb) => (
                 <TableRow key={rb.path}>
-                  <TableCell>{rb.name}</TableCell>
+                  <TableCell className={styles.fileNameCell} title={rb.name}>
+                    {rb.name}
+                  </TableCell>
                   <TableCell>{formatBytes(rb.size)}</TableCell>
                   <TableCell>
                     {rb.modified ? new Date(rb.modified).toLocaleString('zh-CN') : '-'}
@@ -383,6 +392,16 @@ export default function GameDetailPage() {
         gameName={game.name}
         onClose={() => setBackupOpen(false)}
         onConfirm={handleBackup}
+      />
+
+      <RestoreDialog
+        open={restoreOpen}
+        gameName={game.name}
+        localHistory={backup.history}
+        remoteBackups={backup.remoteBackups}
+        onClose={() => setRestoreOpen(false)}
+        onRestoreLocal={handleRestoreLocal}
+        onRestoreRemote={handleRestoreRemote}
       />
     </div>
   )

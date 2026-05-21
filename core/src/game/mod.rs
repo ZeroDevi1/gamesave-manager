@@ -28,18 +28,23 @@ pub mod commands {
     /// 获取游戏列表
     ///
     /// # 核心增强：
-    /// 自动植入**后台静默保洁清洗协程 (Background Cover Sweep Engine)**：
-    /// 当每次加载游戏配置列表时，系统会在后台默默扫视所有已配置的本地游戏。
-    /// 一旦发现某个游戏关联了 `steam_appid`，但因为未设置 SteamGridDB API 秘钥等历史成因
-    /// 导致 `logo_path` 依然为 `None`（呈现简陋蓝色占位），后台协程将立刻异步向 Steam CDN
-    /// 免费公开直链发起并发抓取高清海报并下载，自动补齐该空缺，并静默持久化存盘。
-    /// 这保证了不管用户的游戏是从何处导入、是否配了 Key，都能在加载后 2 秒内静默蜕变成超清海报视觉！
+    /// 自动植入后台静默封面补全协程：
+    /// 1. 对于已配置 steam_appid 但缺失 logo 的游戏，直接从 Steam CDN 拉取封面
+    /// 2. 对于未配置 steam_appid 的游戏，尝试通过游戏名称在游戏数据库中模糊匹配，
+    ///    若匹配到条目且该条目包含 steam_appid，则借用此 AppID 获取封面并补齐
+    /// 3. 全部静默持久化存盘，保证首页游戏卡片在加载后 2 秒内展现高清海报
     #[tauri::command]
     pub fn get_games(app: AppHandle) -> Result<Vec<crate::config::model::GameConfig>, String> {
         let config = crate::config::load_config(&app).map_err(|e| e.to_string())?;
         let games_clone = config.games.clone();
 
-        // 启动后台静默微协程，对缺失 logo_path 的游戏进行全自动补网式抓取
+        // 加载游戏数据库供后台匹配使用
+        let game_db = match crate::game::db::load_db(&app) {
+            Ok(db) => db,
+            Err(_) => crate::game::db::GameDatabase::default(),
+        };
+
+        // 启动后台静默微协程，对缺失 logo_path 的游戏进行全自动补全
         let app_handle_clone = app.clone();
         tauri::async_runtime::spawn(async move {
             let mut need_save = false;
@@ -49,23 +54,34 @@ pub mod commands {
             };
 
             for game in &mut current_config.games {
-                // 如果发现游戏包含 Steam AppID，但是封面图片路径为空，则立刻触发后台补全
-                if game.logo_path.is_none() && game.steam_appid.is_some() {
-                    // 异步向网络获取封面绝对物理路径
+                if game.logo_path.is_some() {
+                    continue;
+                }
+
+                let appid = if let Some(id) = game.steam_appid {
+                    Some(id)
+                } else {
+                    // 通过游戏名在数据库中模糊匹配，借用 steam_appid
+                    let matches = crate::game::db::search_entries(&game_db, &game.name);
+                    matches.into_iter().next().and_then(|e| e.steam_appid)
+                };
+
+                if let Some(id) = appid {
                     if let Ok(Some(logo_path)) = crate::game::metadata::fetch_logo(
                         &app_handle_clone,
                         &game.id,
-                        game.steam_appid,
+                        Some(id),
                     )
                     .await
                     {
                         game.logo_path = Some(logo_path);
+                        game.steam_appid = Some(id);
                         need_save = true;
                     }
                 }
             }
 
-            // 仅在真实发生封面补全时才静默存盘，防范无意义的磁盘 I/O 开销
+            // 仅在真实发生封面补全时才静默存盘
             if need_save {
                 let _ = crate::config::save_config(&app_handle_clone, &current_config);
             }
@@ -73,7 +89,6 @@ pub mod commands {
 
         Ok(games_clone)
     }
-
 
     /// 添加游戏
     #[tauri::command]
