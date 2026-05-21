@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- 圆角矩形背景 -->
+  <rect x="40" y="40" width="944" height="944" rx="200" ry="200" fill="#2563EB"/>
+
+  <!-- 软盘主体 -->
+  <g transform="translate(232, 212)">
+    <!-- 外框 -->
+    <rect x="0" y="40" width="560" height="560" rx="60" ry="60" fill="white"/>
+    
+    <!-- 顶部缺口（用背景色覆盖） -->
+    <rect x="160" y="0" width="240" height="140" rx="30" ry="30" fill="#2563EB"/>
+    
+    <!-- 金属滑块窗口 -->
+    <rect x="60" y="140" width="180" height="200" rx="20" ry="20" fill="#B4C0D4"/>
+    
+    <!-- 标签区域 -->
+    <rect x="280" y="140" width="220" height="200" rx="20" ry="20" fill="#DCE6F5"/>
+    
+    <!-- 标签横线 -->
+    <rect x="300" y="180" width="180" height="24" rx="12" ry="12" fill="#A0AABE"/>
+    <rect x="300" y="240" width="140" height="24" rx="12" ry="12" fill="#A0AABE"/>
+    <rect x="300" y="300" width="160" height="24" rx="12" ry="12" fill="#A0AABE"/>
+    
+    <!-- 底部向上箭头（备份含义） -->
+    <g transform="translate(280, 440)" fill="#2563EB">
+      <!-- 箭头杆 -->
+      <rect x="40" y="60" width="80" height="120" rx="20" ry="20"/>
+      <!-- 箭头三角 -->
+      <polygon points="80,0 0,80 160,80"/>
+    </g>
+  </g>
+</svg>
