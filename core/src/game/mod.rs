@@ -147,6 +147,26 @@ pub mod commands {
     pub fn get_db_game_logo(app: tauri::AppHandle, game_id: String) -> Result<Option<String>, String> {
         super::metadata::get_db_game_logo(app, game_id)
     }
+    #[tauri::command]
+    pub fn launch_game(steam_appid: Option<u64>) -> Result<(), String> {
+        let Some(appid) = steam_appid else {
+            return Err("该游戏未配置 Steam AppID，无法自动启动".to_string());
+        };
+        let url = format!("steam://rungameid/{}", appid);
+        #[cfg(target_os = "windows")]
+        {
+            std::process::Command::new("cmd")
+                .args(["/C", "start", "", &url])
+                .spawn()
+                .map_err(|e| format!("启动失败: {}", e))?;
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = url;
+            return Err("当前仅支持 Windows 平台启动游戏".to_string());
+        }
+        Ok(())
+    }
 }
 
 /// 重新导出数据库命令以便在 lib.rs 中统一注册

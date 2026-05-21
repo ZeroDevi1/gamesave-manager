@@ -1,4 +1,4 @@
-// pages/HomePage.tsx - 首页：游戏卡片网格 + 添加游戏
+// pages/HomePage.tsx - 首页：游戏卡片网格 + 添加游戏（放大布局 + 隐藏滚动条）
 import {
   makeStyles,
   tokens,
@@ -21,20 +21,34 @@ import GameCard from '../components/GameCard'
 import BackupDialog from '../components/BackupDialog'
 import { useGames } from '../hooks/useGames'
 import { useBackup } from '../hooks/useBackup'
+import { launchGame } from '../services/tauri'
+import { useAppStore } from '../store/appStore'
 
 const useStyles = makeStyles({
   root: {
-    padding: '24px',
+    padding: '20px',
     display: 'flex',
     flexDirection: 'column',
-    gap: '20px',
-    minHeight: '100%',
+    gap: '16px',
+    height: '100%',
+    boxSizing: 'border-box',
+    // 隐藏原生滚动条，保留滚动能力
+    overflowY: 'auto',
+    scrollbarWidth: 'none',
+    '::-webkit-scrollbar': {
+      display: 'none',
+    },
+    '@media (max-height: 700px)': {
+      padding: '12px',
+      gap: '10px',
+    },
   },
   header: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: '16px',
+    flexShrink: 0,
   },
   searchBox: {
     display: 'flex',
@@ -44,9 +58,10 @@ const useStyles = makeStyles({
     maxWidth: '400px',
   },
   grid: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '20px',
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+    gap: '16px',
+    flexShrink: 0,
   },
   empty: {
     textAlign: 'center',
@@ -58,6 +73,7 @@ const useStyles = makeStyles({
 export default function HomePage() {
   const styles = useStyles()
   const { games, loading, error, add, refresh } = useGames()
+  const { addToast } = useAppStore()
   const [search, setSearch] = useState('')
   const [addOpen, setAddOpen] = useState(false)
   const [newName, setNewName] = useState('')
@@ -90,6 +106,15 @@ export default function HomePage() {
     }
     await refresh()
     setBackupGameId(null)
+  }
+
+  const handleLaunch = async (steamAppid: number) => {
+    try {
+      await launchGame(steamAppid)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      addToast(msg, 'error')
+    }
   }
 
   const activeGame = games.find((g) => g.id === backupGameId)
@@ -136,9 +161,9 @@ export default function HomePage() {
               game={game}
               onBackup={(id) => setBackupGameId(id)}
               onRestore={(id) => {
-                // 恢复逻辑简化处理：导航到详情页
                 window.location.href = `#/game/${id}`
               }}
+              onLaunch={handleLaunch}
             />
           ))}
         </div>

@@ -27,7 +27,7 @@ import {
 import { useEffect, useState } from 'react'
 import { useGames } from '../hooks/useGames'
 import { useBackup } from '../hooks/useBackup'
-import { scanGameSaves } from '../services/tauri'
+import { scanGameSaves, convertFileSrc } from '../services/tauri'
 import type { SaveFile } from '../services/tauri'
 import BackupDialog from '../components/BackupDialog'
 
@@ -169,7 +169,7 @@ export default function GameDetailPage() {
       <div className={styles.infoPanel}>
         {game.logo_path ? (
           <img
-            src={game.logo_path.startsWith('http') ? game.logo_path : `file://${game.logo_path}`}
+            src={game.logo_path.startsWith('http') ? game.logo_path : convertFileSrc(game.logo_path)}
             alt={game.name}
             className={styles.logo}
             onError={(e) => {

@@ -44,6 +44,7 @@ pub fn run() {
             game::commands::select_and_extract_exe_icon,
             game::commands::save_custom_logo,
             game::commands::get_db_game_logo,
+            game::commands::launch_game,
             // 游戏数据库相关命令
             game::db_commands::get_game_db,
             game::db_commands::search_game_db,

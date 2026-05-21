@@ -1,5 +1,6 @@
 // services/tauri.ts - Tauri invoke 命令封装层
-import { invoke } from '@tauri-apps/api/core'
+import { invoke, convertFileSrc } from '@tauri-apps/api/core'
+export { convertFileSrc }
 
 // ==================== Alist ====================
 
@@ -306,5 +307,14 @@ export function saveCustomLogo(gameId: string, logoBase64: string): Promise<void
 
 export function getDbGameLogo(gameId: string): Promise<string | null> {
   return invoke('get_db_game_logo', { gameId })
+}
+// ==================== 游戏启动 ====================
+
+/**
+ * 通过 Steam AppID 启动游戏
+ * @param steamAppid 游戏的 Steam AppID
+ */
+export function launchGame(steamAppid: number): Promise<void> {
+  return invoke('launch_game', { steamAppid })
 }
 
