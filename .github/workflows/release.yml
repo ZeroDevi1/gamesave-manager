@@ -44,5 +44,6 @@ jobs:
           draft: true
           files: |
             target/release/bundle/msi/*.msi
+            target/release/gamesave-manager.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
