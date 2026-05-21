@@ -1,0 +1,75 @@
+[package]
+name = "gamesave-manager"
+version = "0.1.0"
+description = "GameSave Manager - 游戏存档备份工具"
+authors = ["GameSave Manager Team"]
+license = "MIT"
+repository = ""
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "gamesave_manager_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.2", features = [] }
+
+[dependencies]
+# Tauri 核心
+tauri = { version = "2.11.2", features = [] }
+tauri-plugin-log = "2"
+
+# 序列化
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# HTTP 客户端
+reqwest = { version = "0.12", features = ["json", "stream"] }
+
+# 异步运行时
+tokio = { version = "1", features = ["full"] }
+
+# 压缩
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+# 哈希
+sha2 = "0.10"
+hex = "0.4"
+
+# 时间处理
+chrono = { version = "0.4", features = ["serde"] }
+
+# 目录处理
+dirs = "5"
+
+# 日志
+log = "0.4"
+
+# 错误处理
+anyhow = "1"
+
+# 文件遍历
+walkdir = "2"
+
+# 流处理（用于 reqwest 流式上传）
+futures = "0.3"
+tokio-util = { version = "0.7", features = ["io"] }
+# MD5（Alist 登录密码哈希）
+md5 = "0.7"
+urlencoding = "2"
+regex = "1"
+
+# Windows 原生 FFI 与图标提取依赖
+windows = { version = "0.58.0", features = [
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Gdi",
+    "Win32_Foundation"
+] }
+# 物理文件 native 选择框
+rfd = "0.15"
+# 轻量级内存 PNG 转换与 Base64 编码
+png = "0.17"
+base64 = "0.22"
+

@@ -1,0 +1,10 @@
+{
+  "name": "gamesave-manager",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "cd core && cargo tauri dev",
+    "build": "cd core && cargo tauri build --ci",
+    "tauri": "cd core && cargo tauri"
+  }
+}
