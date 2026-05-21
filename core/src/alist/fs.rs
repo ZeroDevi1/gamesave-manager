@@ -96,3 +96,28 @@ pub async fn mkdir(url: &str, token: &str, path: &str) -> anyhow::Result<()> {
 
     Ok(())
 }
+/// 从 Alist 下载文件到本地路径
+pub async fn download_file(url: &str, token: &str, remote_path: &str, local_path: &str) -> anyhow::Result<()> {
+    let client = reqwest::Client::new();
+    let download_url = format!(
+        "{}/d{}",
+        url.trim_end_matches('/'),
+        remote_path
+    );
+    let resp = client
+        .get(&download_url)
+        .header("Authorization", token)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        anyhow::bail!("下载备份文件失败: HTTP {}", resp.status());
+    }
+
+    let bytes = resp.bytes().await?;
+    if let Some(parent) = Path::new(local_path).parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(local_path, &bytes)?;
+    Ok(())
+}

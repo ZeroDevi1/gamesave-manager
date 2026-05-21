@@ -62,6 +62,8 @@ pub fn run() {
             backup::commands::backup_incremental,
             backup::commands::restore_backup,
             backup::commands::get_backup_history,
+            backup::commands::list_remote_backups,
+            backup::commands::restore_remote_backup,
             // 配置相关命令
             config::commands::load_config,
             config::commands::save_config,

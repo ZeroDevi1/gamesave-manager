@@ -226,6 +226,30 @@ export interface BackupManifest {
   zip_file?: string
 }
 
+export interface RemoteBackupEntry {
+  name: string
+  path: string
+  size: number
+  modified?: string
+}
+
+/**
+ * 列出远程（Alist 网盘）上的备份 ZIP 文件列表
+ * @param gameId 游戏唯一标识符 ID
+ */
+export function listRemoteBackups(gameId: string): Promise<RemoteBackupEntry[]> {
+  return invoke('list_remote_backups', { gameId })
+}
+
+/**
+ * 从远程备份 ZIP 文件恢复存档
+ * @param gameId 游戏唯一标识符 ID
+ * @param remoteZipPath 远程 ZIP 文件绝对路径
+ */
+export function restoreRemoteBackup(gameId: string, remoteZipPath: string): Promise<RestoreResult> {
+  return invoke('restore_remote_backup', { gameId, remoteZipPath })
+}
+
 /**
  * 对指定游戏执行一次完整（全量）的本地存档压缩归档备份
  * @param gameId 游戏唯一标识符 ID

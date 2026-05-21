@@ -1,4 +1,4 @@
-// pages/GameDetailPage.tsx - 游戏详情：存档列表、备份历史、操作按钮
+// pages/GameDetailPage.tsx - 游戏详情：存档列表、本地/远程备份历史、操作按钮
 import { useParams } from 'react-router-dom'
 import {
   makeStyles,
@@ -23,6 +23,7 @@ import {
   Delete24Regular,
   Clock24Regular,
   Document24Regular,
+  CloudArrowDown24Regular,
 } from '@fluentui/react-icons'
 import { useEffect, useState } from 'react'
 import { useGames } from '../hooks/useGames'
@@ -33,11 +34,17 @@ import BackupDialog from '../components/BackupDialog'
 
 const useStyles = makeStyles({
   root: {
-    padding: '24px',
+    padding: '20px',
     display: 'flex',
     flexDirection: 'column',
-    gap: '24px',
-    minHeight: '100%',
+    gap: '16px',
+    height: '100%',
+    boxSizing: 'border-box',
+    overflowY: 'auto',
+    scrollbarWidth: 'none',
+    '::-webkit-scrollbar': {
+      display: 'none',
+    },
   },
   header: {
     display: 'flex',
@@ -120,6 +127,7 @@ export default function GameDetailPage() {
   useEffect(() => {
     if (gameId) {
       backup.fetchHistory()
+      backup.fetchRemoteBackups()
     }
   }, [gameId, backup])
 
@@ -141,6 +149,16 @@ export default function GameDetailPage() {
   const handleRestore = async (timestamp: string) => {
     try {
       await backup.restore(timestamp)
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const handleRestoreRemote = async (remoteZipPath: string) => {
+    if (!confirm('确定要从该远程备份恢复吗？当前本地存档将被覆盖（会自动先备份现有存档）。')) return
+    try {
+      await backup.restoreRemote(remoteZipPath)
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -172,6 +190,7 @@ export default function GameDetailPage() {
             src={game.logo_path.startsWith('http') ? game.logo_path : convertFileSrc(game.logo_path)}
             alt={game.name}
             className={styles.logo}
+            draggable={false}
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = 'none'
             }}
@@ -258,10 +277,10 @@ export default function GameDetailPage() {
         )}
       </div>
 
-      {/* 备份历史 */}
+      {/* 本地备份历史 */}
       <div className={styles.section}>
         <div className={styles.sectionHeader}>
-          <Title2>备份历史</Title2>
+          <Title2>本地备份历史</Title2>
           <Button size="small" onClick={() => backup.fetchHistory()}>
             刷新
           </Button>
@@ -302,6 +321,53 @@ export default function GameDetailPage() {
                       disabled={backup.restoring}
                     >
                       恢复
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </div>
+
+      {/* 远程备份（Alist 网盘） */}
+      <div className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <Title2>远程备份（Alist 网盘）</Title2>
+          <Button size="small" onClick={() => backup.fetchRemoteBackups()}>
+            刷新
+          </Button>
+        </div>
+        {backup.loadingRemote ? (
+          <Spinner label="加载中..." />
+        ) : backup.remoteBackups.length === 0 ? (
+          <div style={{ color: tokens.colorNeutralForeground3 }}>暂无远程备份</div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHeaderCell>文件名</TableHeaderCell>
+                <TableHeaderCell>大小</TableHeaderCell>
+                <TableHeaderCell>修改时间</TableHeaderCell>
+                <TableHeaderCell>操作</TableHeaderCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {backup.remoteBackups.map((rb) => (
+                <TableRow key={rb.path}>
+                  <TableCell>{rb.name}</TableCell>
+                  <TableCell>{formatBytes(rb.size)}</TableCell>
+                  <TableCell>
+                    {rb.modified ? new Date(rb.modified).toLocaleString('zh-CN') : '-'}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      size="small"
+                      icon={<CloudArrowDown24Regular />}
+                      onClick={() => handleRestoreRemote(rb.path)}
+                      disabled={backup.restoring}
+                    >
+                      还原
                     </Button>
                   </TableCell>
                 </TableRow>
