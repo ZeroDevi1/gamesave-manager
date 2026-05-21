@@ -82,6 +82,7 @@ pub mod commands {
     }
 
     /// 列出远程备份版本（Alist 网盘上的 ZIP 文件列表）
+    /// 目录不存在时静默返回空列表，避免对未备份过的游戏报错
     #[tauri::command]
     pub async fn list_remote_backups(
         app: AppHandle,
@@ -99,9 +100,16 @@ pub mod commands {
         let token = alist.token.ok_or("未登录 Alist")?;
         let remote_dir = format!("{}/full/", base_remote_path.trim_end_matches('/'));
 
-        let entries = crate::alist::fs::list_dir(&alist.base_url, &token, &remote_dir)
-            .await
-            .map_err(|e| e.to_string())?;
+        let entries = match crate::alist::fs::list_dir(&alist.base_url, &token, &remote_dir).await {
+            Ok(entries) => entries,
+            Err(e) => {
+                let msg = e.to_string().to_lowercase();
+                if msg.contains("not found") || msg.contains("object not found") || msg.contains("路径不存在") {
+                    return Ok(Vec::new());
+                }
+                return Err(e.to_string());
+            }
+        };
 
         // 只保留 ZIP 文件
         let backups: Vec<RemoteBackupEntry> = entries

@@ -1,5 +1,5 @@
 // hooks/useBackup.ts - 备份操作封装（含本地 + 远程备份）
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import {
   backupFull,
   backupIncremental,
@@ -136,18 +136,34 @@ export function useBackup(gameId?: string) {
     [gameId, addToast],
   )
 
-  return {
-    backingUp,
-    restoring,
-    history,
-    remoteBackups,
-    loadingRemote,
-    error,
-    fetchHistory,
-    fetchRemoteBackups,
-    fullBackup,
-    incrementalBackup,
-    restore,
-    restoreRemote,
-  }
+  return useMemo(
+    () => ({
+      backingUp,
+      restoring,
+      history,
+      remoteBackups,
+      loadingRemote,
+      error,
+      fetchHistory,
+      fetchRemoteBackups,
+      fullBackup,
+      incrementalBackup,
+      restore,
+      restoreRemote,
+    }),
+    [
+      backingUp,
+      restoring,
+      history,
+      remoteBackups,
+      loadingRemote,
+      error,
+      fetchHistory,
+      fetchRemoteBackups,
+      fullBackup,
+      incrementalBackup,
+      restore,
+      restoreRemote,
+    ],
+  )
 }

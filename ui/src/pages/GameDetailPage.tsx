@@ -129,7 +129,8 @@ export default function GameDetailPage() {
       backup.fetchHistory()
       backup.fetchRemoteBackups()
     }
-  }, [gameId, backup])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameId])
 
   const handleBackup = async (type: 'full' | 'incremental') => {
     try {
