@@ -21,7 +21,23 @@ pub async fn list_dir(url: &str, token: &str, path: &str) -> anyhow::Result<Vec<
         .send()
         .await?;
 
-    let api_resp: AlistApiResponse<serde_json::Value> = resp.json().await?;
+    let status = resp.status();
+    let err_text = resp.text().await.unwrap_or_default();
+
+    if !status.is_success() {
+        anyhow::bail!(
+            "中转网关响应非预期 (HTTP {}): {}。请检查您的网盘授权是否被限制，或 Token 是否已失效。",
+            status,
+            if err_text.len() > 150 { format!("{}...", &err_text[..150]) } else { err_text }
+        );
+    }
+
+    let api_resp: AlistApiResponse<serde_json::Value> = serde_json::from_str(&err_text)
+        .map_err(|e| anyhow::anyhow!(
+            "解析中转网关响应失败 ({}): {}",
+            e,
+            if err_text.len() > 150 { format!("{}...", &err_text[..150]) } else { err_text }
+        ))?;
     if api_resp.code != 200 {
         anyhow::bail!("列出目录失败: {}", api_resp.message);
     }

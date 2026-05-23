@@ -96,15 +96,17 @@ pub mod commands {
             .ok_or_else(|| "未找到游戏".to_string())?;
 
         let base_remote_path = config.get_game_remote_path(game);
-        let alist = config.alist.ok_or("未配置 Alist")?;
-        let token = alist.token.ok_or("未登录 Alist")?;
         let remote_dir = format!("{}/full/", base_remote_path.trim_end_matches('/'));
 
-        let entries = match crate::alist::fs::list_dir(&alist.base_url, &token, &remote_dir).await {
+        // 通过存储适配器工厂动态获取激活的物理云端后端实例
+        let backend = crate::storage::get_storage_backend(&config).map_err(|e| e.to_string())?;
+
+        let entries = match backend.list_dir(&remote_dir).await {
             Ok(entries) => entries,
             Err(e) => {
                 let msg = e.to_string().to_lowercase();
-                if msg.contains("not found") || msg.contains("object not found") || msg.contains("路径不存在") {
+                // 兼容各云存储驱动抛出的“未找到/路径不存在”错误，静默返回空列表
+                if msg.contains("not found") || msg.contains("object not found") || msg.contains("路径不存在") || msg.contains("404") {
                     return Ok(Vec::new());
                 }
                 return Err(e.to_string());
@@ -118,7 +120,7 @@ pub mod commands {
             .map(|e| RemoteBackupEntry {
                 name: e.name,
                 path: e.path,
-                size: e.size,
+                size: e.size as u64,
                 modified: e.modified,
             })
             .collect();

@@ -65,20 +65,11 @@ async fn perform_restore_from_remote_zip(
         .to_string();
     let local_zip = temp_dir.join(&zip_name);
 
-    if let Some(ref alist) = config.alist {
-        if let Some(ref token) = alist.token {
-            crate::alist::fs::download_file(
-                &alist.base_url,
-                token,
-                remote_zip_path,
-                local_zip.to_str().unwrap(),
-            ).await?;
-        } else {
-            anyhow::bail!("未登录 Alist");
-        }
-    } else {
-        anyhow::bail!("未配置 Alist");
-    }
+    // 通过存储适配器工厂动态获取激活的物理云端后端实例
+    let backend = crate::storage::get_storage_backend(&config)?;
+    
+    // 调用统一的 Trait 抽象方法从云端下载 ZIP 物理备份到本地临时路径
+    backend.download_file(remote_zip_path, local_zip.to_str().unwrap()).await?;
 
     let ts_str = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
 

@@ -295,15 +295,57 @@ export interface AlistConfig {
   backup_root?: string
 }
 
+export type StorageConfig =
+  | {
+      type: 'netdisk'
+      driver: string // 选取的云网盘物理驱动类型（如 baiduyun_go、onedrive_go 等）
+      token: string // 访问令牌 (Access Token)
+      refresh_token?: string // 刷新令牌 (Refresh Token，主要用于突破 Access Token 时效限制，非必填以向下兼容旧版)
+      backup_root?: string
+    }
+  | {
+      type: 'alist'
+      base_url: string
+      username: string
+      token?: string
+      provider: string
+      backup_root?: string
+    }
+  | {
+      type: 'webdav'
+      endpoint: string
+      username: string
+      password: string
+      backup_root?: string
+    }
+  | {
+      type: 's3'
+      endpoint: string
+      bucket: string
+      access_key_id: string
+      secret_access_key: string
+      region?: string
+      backup_root?: string
+    }
+
 export interface Settings {
   theme: string
   steamgriddb_api_key?: string
 }
 
 export interface AppConfig {
-  alist?: AlistConfig
+  storage?: StorageConfig
   games: GameConfig[]
   settings: Settings
+  alist?: AlistConfig
+}
+
+export interface RemoteFileEntry {
+  name: string
+  path: string
+  is_dir: boolean
+  size: number
+  modified?: string
 }
 
 export function loadConfig(): Promise<AppConfig> {
@@ -312,6 +354,25 @@ export function loadConfig(): Promise<AppConfig> {
 
 export function saveConfig(config: AppConfig): Promise<boolean> {
   return invoke('save_config', { config })
+}
+
+// ==================== 统一存储交互命令 ====================
+
+/**
+ * 一键测试存储后端的连通性（支持临时未存盘参数测试）
+ */
+export function storageTestConnection(config: StorageConfig): Promise<boolean> {
+  return invoke('storage_test_connection', { config })
+}
+
+/**
+ * 通用云端物理目录列表浏览
+ */
+export function storageListDir(
+  path: string,
+  config?: StorageConfig,
+): Promise<RemoteFileEntry[]> {
+  return invoke('storage_list_dir', { path, config })
 }
 
 // ==================== 自定义封面与物理图标提取 ====================

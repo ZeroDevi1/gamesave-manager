@@ -110,22 +110,19 @@ pub async fn perform_full_backup(app: &AppHandle, game_id: &str) -> anyhow::Resu
     let zip_bytes = std::fs::read(&zip_path)?;
     let _zip_sha256 = hash::sha256_string(&zip_bytes);
 
-    // 上传到 Alist（引入动态路由拼接，无缝支持自定义备份根路径）
+    // 计算清洗后的云端备份主路径与具体全量备份子文件夹/目标文件名
     let base_remote_path = config.get_game_remote_path(game);
     let remote_dir = format!("{}/full/", base_remote_path.trim_end_matches('/'));
     let remote_path = format!("{}{}", remote_dir, zip_name);
 
-    if let Some(alist) = config.alist {
-        if let Some(token) = alist.token {
-            crate::alist::fs::mkdir(&alist.base_url, &token, &remote_dir).await?;
-            crate::alist::fs::upload_file(
-                &alist.base_url,
-                &token,
-                zip_path.to_str().unwrap(),
-                &remote_path,
-            ).await?;
-        }
-    }
+    // 通过存储适配器工厂动态获取激活的物理云端后端实例，实现与具体底层协议完全解耦
+    let backend = crate::storage::get_storage_backend(&config)?;
+    
+    // 调用统一的 Trait 抽象方法级联创建云端物理文件夹
+    backend.mkdir(&remote_dir).await?;
+    
+    // 调用统一的 Trait 抽象方法将本地物理存档 ZIP 上传至云端
+    backend.upload_file(zip_path.to_str().unwrap(), &remote_path).await?;
 
     // 保存 manifest
     let manifest = BackupManifest {

@@ -84,24 +84,18 @@ pub async fn perform_incremental_backup(
                 );
                 let remote_path = format!("{}{}", remote_dir, rel_path);
 
-                if let Some(ref alist) = config.alist {
-                    if let Some(ref token) = alist.token {
-                        // 确保远程目录存在（逐层创建）
-                        let remote_parent = Path::new(&remote_path)
-                            .parent()
-                            .map(|p| p.to_string_lossy().to_string())
-                            .unwrap_or_else(|| remote_dir.clone());
-                        let _ = crate::alist::fs::mkdir(&alist.base_url, token, &remote_parent,
-                        ).await;
+                // 通过存储适配器工厂动态获取激活的物理云端后端实例
+                let backend = crate::storage::get_storage_backend(&config)?;
 
-                        crate::alist::fs::upload_file(
-                            &alist.base_url,
-                            token,
-                            path.to_str().unwrap(),
-                            &remote_path,
-                        ).await?;
-                    }
-                }
+                // 确保远程层级目录已物理创建（忽略文件夹早已存在的静默成功）
+                let remote_parent = Path::new(&remote_path)
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|| remote_dir.clone());
+                let _ = backend.mkdir(&remote_parent).await;
+
+                // 调用统一的 Trait 抽象方法上传增量变更物理文件
+                backend.upload_file(path.to_str().unwrap(), &remote_path).await?;
             }
 
             new_files.push(FileEntry {

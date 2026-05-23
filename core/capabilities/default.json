@@ -3,7 +3,8 @@
   "identifier": "default",
   "description": "enables the default permissions",
   "windows": [
-    "main"
+    "main",
+    "oplist-auth-helper"
   ],
   "permissions": [
     "core:default",
@@ -12,6 +13,8 @@
     "core:window:allow-minimize",
     "core:window:allow-maximize",
     "core:window:allow-start-dragging",
-    "core:window:allow-toggle-maximize"
+    "core:window:allow-toggle-maximize",
+    "core:webview:allow-create-webview-window",
+    "core:window:allow-destroy"
   ]
 }
