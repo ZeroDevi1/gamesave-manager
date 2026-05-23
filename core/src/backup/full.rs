@@ -8,6 +8,23 @@ use std::path::Path;
 use tauri::AppHandle;
 use walkdir::WalkDir;
 
+/// 辅助函数：清洗（Sanitize）备份压缩包的文件名
+///
+/// # 核心设计与规避
+/// 1. Windows 本地系统限制：Windows 本地 NTFS 文件系统不支持文件名中夹带冒号 `:` 等非法字符（这会导致系统
+///    将其解释为 NTFS 备用数据流，造成文件隐藏或物理读写失败）。
+/// 2. 百度网盘等云端限制：百度网盘等主流云盘在调用文件创建 API 时，如果文件名中包含冒号、问号等，会报 `-errno: -7`
+///    导致整个上传链路崩溃。
+/// 本函数通过将文件名中所有的特殊高危字符和空格统一替换为下划线 `_`，实现了本地和云端的双重安全性保障。
+fn sanitize_filename(name: &str) -> String {
+    name.chars().map(|c| {
+        match c {
+            ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\\' | '/' | ' ' => '_',
+            _ => c
+        }
+    }).collect()
+}
+
 /// 执行全量备份
 pub async fn perform_full_backup(app: &AppHandle, game_id: &str) -> anyhow::Result<BackupResult> {
     // 读取配置
@@ -20,7 +37,8 @@ pub async fn perform_full_backup(app: &AppHandle, game_id: &str) -> anyhow::Resu
 
     let timestamp = Utc::now();
     let ts_str = timestamp.format("%Y%m%d_%H%M%S").to_string();
-    let zip_name = format!("{}_{}.zip", game.name.replace(' ', "_"), ts_str);
+    let safe_game_name = sanitize_filename(&game.name);
+    let zip_name = format!("{}_{}.zip", safe_game_name, ts_str);
 
     // 本地临时 zip 路径
     let temp_dir = std::env::temp_dir().join("gamesave-manager");
