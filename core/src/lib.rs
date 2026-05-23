@@ -36,9 +36,10 @@ pub fn run() {
             alist::commands::alist_list_dir,
             alist::commands::alist_upload,
             alist::commands::alist_mkdir,
-            // 统一存储适配器通用交互命令 (专用于网盘向导引导与自定义云端备份)
+            // 统一存储适配器通用交互命令 (专专于网盘向导引导与自定义云端备份)
             storage::commands::storage_test_connection,
             storage::commands::storage_list_dir,
+            storage::commands::storage_refresh_all_tokens,
             // 游戏相关命令
             game::commands::get_games,
             game::commands::add_game,

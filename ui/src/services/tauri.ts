@@ -291,6 +291,7 @@ export interface AlistConfig {
   base_url: string
   username: string
   token?: string
+  password?: string
   provider: string
   backup_root?: string
 }
@@ -308,6 +309,7 @@ export type StorageConfig =
       base_url: string
       username: string
       token?: string
+      password?: string
       provider: string
       backup_root?: string
     }
@@ -373,6 +375,13 @@ export function storageListDir(
   config?: StorageConfig,
 ): Promise<RemoteFileEntry[]> {
   return invoke('storage_list_dir', { path, config })
+}
+
+/**
+ * 轮询并刷新全部已配置网盘的 Access & Refresh Token 凭证并自动持久化写盘
+ */
+export function storageRefreshAllTokens(): Promise<boolean> {
+  return invoke('storage_refresh_all_tokens')
 }
 
 // ==================== 自定义封面与物理图标提取 ====================

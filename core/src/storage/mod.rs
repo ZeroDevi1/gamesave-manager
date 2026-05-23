@@ -132,6 +132,17 @@ impl NetdiskBackend {
         "https://api.oplist.org"
     }
 
+    /// 将直连网盘配置转换为专用的 WebDAV 适配器配置，利用 api.oplist.org 统一 WebDAV 网关实现免部署存取
+    fn to_webdav_backend(&self) -> WebdavBackend {
+        let webdav_cfg = crate::config::model::WebdavConfig {
+            endpoint: "https://api.oplist.org/dav".to_string(),
+            username: "admin".to_string(), // 临时占位，Bearer Token 模式下自动忽略用户名
+            password: self.config.token.clone(),
+            backup_root: self.config.backup_root.clone(),
+        };
+        WebdavBackend::new(webdav_cfg)
+    }
+
     /// 辅助方法：动态组装直连网关在 AList / OpenList 服务端的物理挂载子路径
     /// 
     /// # 核心设计
@@ -195,9 +206,10 @@ impl NetdiskBackend {
             return Ok(());
         }
 
-        // 降级兼容：其它直连网盘使用公共 AList 代理（如网关限制 AList API 会被 diagnostics 捕获）
+        // 其它网盘（阿里、夸克、OneDrive）重映射委托给 api.oplist.org WebDAV 网关
         let real_path = self.get_real_path(path);
-        crate::alist::fs::mkdir(self.base_url(), &self.config.token, &real_path).await
+        let webdav_backend = self.to_webdav_backend();
+        webdav_backend.mkdir(&real_path).await
     }
 
     /// 将本地游戏存档上传至直连网盘
@@ -242,8 +254,10 @@ impl NetdiskBackend {
             return Ok(());
         }
 
+        // 其它网盘（阿里、夸克、OneDrive）重映射委托给 api.oplist.org WebDAV 网关
         let real_path = self.get_real_path(remote_path);
-        crate::alist::fs::upload_file(self.base_url(), &self.config.token, local_path, &real_path).await
+        let webdav_backend = self.to_webdav_backend();
+        webdav_backend.upload_file(local_path, &real_path).await
     }
 
     /// 从网盘下载指定的游戏存档
@@ -282,8 +296,10 @@ impl NetdiskBackend {
             return Ok(());
         }
 
+        // 其它网盘（阿里、夸克、OneDrive）重映射委托给 api.oplist.org WebDAV 网关
         let real_path = self.get_real_path(remote_path);
-        crate::alist::fs::download_file(self.base_url(), &self.config.token, &real_path, local_path).await
+        let webdav_backend = self.to_webdav_backend();
+        webdav_backend.download_file(&real_path, local_path).await
     }
 
     /// 列出直连网盘指定路径下的子条目列表
@@ -347,20 +363,10 @@ impl NetdiskBackend {
             return Ok(entries);
         }
 
-        // 其它网盘暂退避，若中转网关完全拒绝 AList APIs 访问，在 fs.rs 级别会输出精准 404/403 建议自建
+        // 其它网盘（阿里、夸克、OneDrive）重映射委托给 api.oplist.org WebDAV 网关
         let real_path = self.get_real_path(path);
-        let raw_entries = crate::alist::fs::list_dir(self.base_url(), &self.config.token, &real_path).await?;
-        let converted = raw_entries
-            .into_iter()
-            .map(|e| RemoteFileEntry {
-                name: e.name,
-                path: e.path,
-                is_dir: e.is_dir,
-                size: e.size as i64,
-                modified: e.modified,
-            })
-            .collect();
-        Ok(converted)
+        let webdav_backend = self.to_webdav_backend();
+        webdav_backend.list_dir(&real_path).await
     }
 }
 
@@ -378,28 +384,56 @@ impl AlistBackend {
     pub fn new(config: AlistConfig) -> Self {
         Self { config }
     }
+
+    /// 获取当前的有效 Token，若本地 Token 缺失但有密码，则在底层发起自动登录换取临时 Token。
+    ///
+    /// # 核心设计与规避机制
+    /// 1. 优先使用本地持久化存储的授权 Token (令牌)；
+    /// 2. 弱 Token 缺失或被清空，但 `password` 字段非空，则利用自建密码自动调用 `/api/auth/login` 接口；
+    /// 3. 如果两者均为空，则抛出详尽的配置缺失报错，指引用户到设置页填写。
+    async fn get_effective_token(&self) -> anyhow::Result<String> {
+        if let Some(ref tok) = self.config.token {
+            if !tok.trim().is_empty() {
+                return Ok(tok.clone());
+            }
+        }
+        
+        if let Some(ref pwd) = self.config.password {
+            if !pwd.trim().is_empty() {
+                log::info!("[Alist] 授权 Token 为空，正在通过用户名/密码自动认证换取 Token...");
+                let login_res = crate::alist::auth::login(
+                    &self.config.base_url,
+                    &self.config.username,
+                    pwd
+                ).await?;
+                return Ok(login_res.token);
+            }
+        }
+
+        anyhow::bail!("Alist 认证失败: 授权 Token 令牌与密码均为空，请进入设置界面补全云端同步参数")
+    }
 }
 
 impl AlistBackend {
     /// 在 Alist 云端物理系统上创建目录
     pub async fn mkdir(&self, path: &str) -> anyhow::Result<()> {
-        let token = self.config.token.as_deref().unwrap_or("");
-        crate::alist::fs::mkdir(&self.config.base_url, token, path).await
+        let token = self.get_effective_token().await?;
+        crate::alist::fs::mkdir(&self.config.base_url, &token, path).await
     }
 
     async fn upload_file(&self, local_path: &str, remote_path: &str) -> anyhow::Result<()> {
-        let token = self.config.token.as_deref().unwrap_or("");
-        crate::alist::fs::upload_file(&self.config.base_url, token, local_path, remote_path).await
+        let token = self.get_effective_token().await?;
+        crate::alist::fs::upload_file(&self.config.base_url, &token, local_path, remote_path).await
     }
 
     async fn download_file(&self, remote_path: &str, local_path: &str) -> anyhow::Result<()> {
-        let token = self.config.token.as_deref().unwrap_or("");
-        crate::alist::fs::download_file(&self.config.base_url, token, remote_path, local_path).await
+        let token = self.get_effective_token().await?;
+        crate::alist::fs::download_file(&self.config.base_url, &token, remote_path, local_path).await
     }
 
     async fn list_dir(&self, path: &str) -> anyhow::Result<Vec<RemoteFileEntry>> {
-        let token = self.config.token.as_deref().unwrap_or("");
-        let raw_entries = crate::alist::fs::list_dir(&self.config.base_url, token, path).await?;
+        let token = self.get_effective_token().await?;
+        let raw_entries = crate::alist::fs::list_dir(&self.config.base_url, &token, path).await?;
         
         // 转换 Alist 原生数据实体为系统通用抽象实体
         let converted = raw_entries
@@ -435,6 +469,15 @@ impl WebdavBackend {
     fn create_client(&self) -> reqwest::Client {
         reqwest::Client::new()
     }
+
+    /// 动态应用鉴权头。支持智能 Bearer Token（JWT或长Token形式）与标准 Basic Auth 自动路由分流。
+    fn apply_auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        if self.config.password.starts_with("ey") || self.config.password.len() > 30 {
+            req.header("Authorization", format!("Bearer {}", self.config.password))
+        } else {
+            req.basic_auth(&self.config.username, Some(&self.config.password))
+        }
+    }
 }
 
 impl WebdavBackend {
@@ -464,11 +507,9 @@ impl WebdavBackend {
             let url = format!("{}{}", endpoint, current_path);
             let mkcol_method = reqwest::Method::from_bytes(b"MKCOL")?;
             
-            let resp = client
-                .request(mkcol_method, &url)
-                .basic_auth(&self.config.username, Some(&self.config.password))
-                .send()
-                .await?;
+            let mut req = client.request(mkcol_method, &url);
+            req = self.apply_auth(req);
+            let resp = req.send().await?;
 
             let status = resp.status();
             // 201 Created 代表成功，405 代表目录早已存在（视作成功），其它状态抛出异常以预警
@@ -502,14 +543,13 @@ impl WebdavBackend {
             reqwest::Body::from(file)
         };
 
-        let resp = client
+        let mut req = client
             .put(&url)
-            .basic_auth(&self.config.username, Some(&self.config.password))
             .header("Content-Type", "application/octet-stream")
             .header("Content-Length", file_size.to_string())
-            .body(body)
-            .send()
-            .await?;
+            .body(body);
+        req = self.apply_auth(req);
+        let resp = req.send().await?;
 
         let status = resp.status();
         if !status.is_success() {
@@ -526,11 +566,9 @@ impl WebdavBackend {
         let endpoint = self.config.endpoint.trim_end_matches('/');
         let url = format!("{}{}", endpoint, remote_path);
 
-        let resp = client
-            .get(&url)
-            .basic_auth(&self.config.username, Some(&self.config.password))
-            .send()
-            .await?;
+        let mut req = client.get(&url);
+        req = self.apply_auth(req);
+        let resp = req.send().await?;
 
         let status = resp.status();
         if !status.is_success() {
@@ -551,24 +589,23 @@ impl WebdavBackend {
     /// 列出 WebDAV 云端指定物理路径下的子条目列表
     ///
     /// # 核心设计与规避：极致轻量且安全的无外部依赖 XML 正则提取解析器
-    /// WebDAV `PROPFIND` 操作默认返回大片包含命名空间的 XML 物理属性结构体。
+    /// WebDAV `PROPFIND` 操作默认返回大片包含命名空间的 XML 物理属性 structure。
     /// 为了捍卫 Rust 轻量小体积底座、杜绝引入多余庞大的第三方 XML crate，此处手写编写了
     /// 搭载 Regex 正则表达式的高健壮性 XML 切消匹配扫描算法。
-    /// 能够稳定兼容带命名空间前缀（如 `d:href`、`D:href`、`a:href` 等）与不带前缀的各类 WebDAV 服务端（坚果云、Nextcloud 等）。
+    /// 能够稳定兼容带命名空间前缀（如 `d:href`、`D:href`、`a:href` 等）与不带前缀的各类 WebDAV 服务端（坚云、Nextcloud 等）。
     async fn list_dir(&self, path: &str) -> anyhow::Result<Vec<RemoteFileEntry>> {
         let client = self.create_client();
         let endpoint = self.config.endpoint.trim_end_matches('/');
         let url = format!("{}{}", endpoint, path);
 
         let propfind_method = reqwest::Method::from_bytes(b"PROPFIND")?;
-        let resp = client
+        let mut req = client
             .request(propfind_method, &url)
-            .basic_auth(&self.config.username, Some(&self.config.password))
             // 设定 Depth: 1 获取目录及直接子文件信息
             .header("Depth", "1")
-            .header("Content-Type", "application/xml; charset=utf-8")
-            .send()
-            .await?;
+            .header("Content-Type", "application/xml; charset=utf-8");
+        req = self.apply_auth(req);
+        let resp = req.send().await?;
 
         let status = resp.status();
         if !status.is_success() {
@@ -722,9 +759,99 @@ pub fn get_storage_backend_with_config(config: &StorageConfig) -> StorageBackend
 // 5. Tauri Commands 外部交互层导出 (Tauri Commands)
 // =========================================================================
 
+// =========================================================================
+// 5. Tauri Commands 外部交互层导出 (Tauri Commands)
+// =========================================================================
+
+/// 通用的向 api.oplist.org 发起 Token 刷新的异步函数
+///
+/// # 核心设计与规避机制
+/// 统一抹除直连驱动后缀（如 baiduyun_go -> baidu）对齐 api.oplist.org 远程刷新端点，
+/// 通过安全中转接口刷新令牌，确保 ClientSecret 等涉密信息零暴露风险。
+pub async fn refresh_netdisk_token(driver: &str, refresh_token: &str) -> anyhow::Result<(String, String)> {
+    let client = reqwest::Client::new();
+    let clean_driver = driver
+        .trim_end_matches("_go")
+        .trim_end_matches("_qr")
+        .trim_end_matches("_fn")
+        .to_string();
+
+    let resp = client
+        .post(format!("https://api.oplist.org/api/drive/{}/refresh", clean_driver))
+        .json(&serde_json::json!({
+            "refresh_token": refresh_token
+        }))
+        .send()
+        .await?;
+
+    let status = resp.status();
+    let text = resp.text().await.unwrap_or_default();
+
+    if !status.is_success() {
+        anyhow::bail!("中转端刷新令牌失败 (HTTP {}): {}", status, text);
+    }
+
+    let val: serde_json::Value = serde_json::from_str(&text)?;
+    let code = val.get("code").and_then(|c| c.as_i64()).unwrap_or(0);
+    if code != 200 {
+        let msg = val.get("message").and_then(|m| m.as_str()).unwrap_or("未知接口错误");
+        anyhow::bail!("刷新接口业务报错 (代号 {}): {}", code, msg);
+    }
+
+    let data = val.get("data").ok_or_else(|| anyhow::anyhow!("接口响应中未找到 data 节点"))?;
+    let access_token = data.get("access_token")
+        .and_then(|a| a.as_str())
+        .ok_or_else(|| anyhow::anyhow!("未获取到有效 access_token"))?
+        .to_string();
+    let new_refresh_token = data.get("refresh_token")
+        .and_then(|r| r.as_str())
+        .unwrap_or(refresh_token) // 降级容错：如未返回新的则沿用原有刷新令牌
+        .to_string();
+
+    Ok((access_token, new_refresh_token))
+}
+
 /// 存储适配器 Tauri Commands 外部通信接口
 pub mod commands {
     use super::*;
+
+    /// 静默轮询并刷新全部已配置网盘的 Access & Refresh Token 凭证，并自动回写持久化存盘。
+    /// 
+    /// # 业务场景
+    /// 前端在初始化挂载时（或登录后）自动异步触发本命令，实现后台无感静默保鲜。
+    #[tauri::command]
+    pub async fn storage_refresh_all_tokens(
+        app: tauri::AppHandle,
+    ) -> Result<bool, String> {
+        let mut app_cfg = crate::config::load_config(&app).map_err(|e| e.to_string())?;
+        let mut has_changed = false;
+        
+        if let Some(StorageConfig::Netdisk(ref mut netdisk)) = app_cfg.storage {
+            if let Some(ref refresh_tok) = netdisk.refresh_token {
+                if !refresh_tok.trim().is_empty() {
+                    log::info!("[Netdisk] 检测到直连网盘配置 ({})，正在静默刷新 Token 安全凭证...", netdisk.driver);
+                    match refresh_netdisk_token(&netdisk.driver, refresh_tok).await {
+                        Ok((new_access, new_refresh)) => {
+                            netdisk.token = new_access;
+                            netdisk.refresh_token = Some(new_refresh);
+                            has_changed = true;
+                            log::info!("[Netdisk] 网盘 Token 凭证全自动静默刷新并重新锁定成功！");
+                        }
+                        Err(e) => {
+                            log::warn!("[Netdisk] 网盘 Token 静默刷新异常: {} (非致命，跳过)", e);
+                        }
+                    }
+                }
+            }
+        }
+
+        if has_changed {
+            crate::config::save_config(&app, &app_cfg).map_err(|e| e.to_string())?;
+            return Ok(true);
+        }
+        
+        Ok(false)
+    }
 
     /// 一键测试临时存储配置的连通性与云端目录可读写权限
     ///
@@ -750,7 +877,7 @@ pub mod commands {
     ///
     /// # 业务场景与模式
     /// 1. 引导向导模式（传入 `config` 为 `Some`）：前端向导在尚未保存配置前，传入临时的配置与路径，
-    ///    本命令动态解析并浏览云端目录，配合前端 UI 呈递出可交互的“目录树”，供用户自由、直观地指定自定义备份根目录。
+    ///    本命令动态浏览云端目录，配合前端 UI 呈递出可交互的“目录树”，供用户自由、直观地指定自定义备份根目录。
     /// 2. 日常运行模式（传入 `config` 为 `None`）：前端直接传入 `None`，本命令会自动加载已存盘激活的配置，
     ///    列出云盘指定路径下的备份文件，供日常列表展现。
     #[tauri::command]

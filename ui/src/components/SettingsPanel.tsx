@@ -17,6 +17,7 @@ import {
   saveConfig,
   alistLogin,
   storageTestConnection,
+  storageRefreshAllTokens,
 } from '../services/tauri'
 import type { StorageConfig } from '../services/tauri'
 import { useAppStore } from '../store/appStore'
@@ -100,6 +101,22 @@ export default function SettingsPanel() {
 
   // 初始化拉取全局配置文件并渲染表单
   useEffect(() => {
+    // 每次进入设置页，主动静默轮询刷新所有已配置网盘凭证并自动持久化存盘
+    storageRefreshAllTokens().then((hasRefreshed) => {
+      if (hasRefreshed) {
+        console.info('[Netdisk] 全自动静默刷新 Token 成功并已重新存盘。')
+        // 如果成功刷新了，重新读取配置以更新最新的令牌状态到表单中
+        loadConfig().then((config) => {
+          if (config.storage && config.storage.type === 'netdisk') {
+            setNetdiskToken(config.storage.token)
+            setNetdiskRefreshToken(config.storage.refresh_token ?? '')
+          }
+        })
+      }
+    }).catch(err => {
+      console.warn('[Netdisk] 轮询刷新 Token 异常:', err)
+    })
+
     loadConfig().then((config) => {
       setTheme(config.settings?.theme ?? 'system')
       setApiKey(config.settings?.steamgriddb_api_key ?? '')
@@ -117,6 +134,7 @@ export default function SettingsPanel() {
           setAlistUrl(config.storage.base_url)
           setAlistUsername(config.storage.username)
           setAlistToken(config.storage.token ?? '')
+          setAlistPassword(config.storage.password ?? '')
           setAlistProvider(config.storage.provider)
         } else if (config.storage.type === 'webdav') {
           setWebdavEndpoint(config.storage.endpoint)
@@ -132,10 +150,11 @@ export default function SettingsPanel() {
       } else if (config.alist) {
         // 向下兼容老版本自建 Alist 配置
         setStorageType('alist')
-        setIsConnected(!!config.alist.token)
+        setIsConnected(!!config.alist.token || !!config.alist.password)
         setAlistUrl(config.alist.base_url)
         setAlistUsername(config.alist.username)
         setAlistToken(config.alist.token ?? '')
+        setAlistPassword(config.alist.password ?? '')
         setAlistProvider(config.alist.provider)
       }
     })
@@ -156,6 +175,7 @@ export default function SettingsPanel() {
         base_url: alistUrl,
         username: alistUsername,
         token: alistToken || undefined,
+        password: alistPassword || undefined,
         provider: alistProvider,
       }
     } else if (storageType === 'webdav') {
@@ -373,6 +393,7 @@ export default function SettingsPanel() {
           base_url: alistUrl,
           username: alistUsername,
           token: alistToken || undefined,
+          password: alistPassword || undefined,
           provider: alistProvider,
           backup_root: config.storage?.type === 'alist' ? config.storage.backup_root : undefined,
         }
@@ -524,7 +545,7 @@ export default function SettingsPanel() {
                       type="password"
                       value={alistPassword}
                       onChange={(e) => setAlistPassword(e.target.value)}
-                      placeholder="自建端密码 (仅用于登录捕获 Token，本地不留存此密码)"
+                      placeholder="自建端密码 (填入密码后，后端可免 Token 全自动登录并保存密码)"
                       style={{ flexGrow: 1 }}
                     />
                     <Button onClick={handleAlistLogin} disabled={testLoading}>
@@ -538,7 +559,7 @@ export default function SettingsPanel() {
                     id="alistToken"
                     value={alistToken}
                     onChange={(e) => setAlistToken(e.target.value)}
-                    placeholder="登录获取，或在 Alist 后台拷贝 Token 填入此行"
+                    placeholder="授权 Token (可选，如填入密码，本行可留空)"
                   />
                 </div>
               </>

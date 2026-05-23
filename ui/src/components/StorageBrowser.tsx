@@ -82,20 +82,24 @@ export default function StorageBrowser({ tempConfig }: StorageBrowserProps) {
     }
   }, [tempConfig])
 
+  // 序列化配置为字符串，彻底根除因 tempConfig 属性对象引用不断生成导致的 useEffect 死循环自己刷新的 Bug
+  const tempConfigStr = tempConfig ? JSON.stringify(tempConfig) : '';
+
   // 列出云端目录内容
   const loadDir = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
+      const cfg: StorageConfig | undefined = tempConfigStr ? JSON.parse(tempConfigStr) : undefined;
       // 传入临时配置或 undefined，由后端工厂智能构建具体分发实例
-      const data = await storageListDir(path, tempConfig)
+      const data = await storageListDir(path, cfg)
       setEntries(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setLoading(false)
     }
-  }, [path, tempConfig])
+  }, [path, tempConfigStr])
 
   useEffect(() => {
     loadDir()

@@ -69,6 +69,9 @@ pub struct AlistConfig {
     pub provider: String, 
     /// 全局云端物理备份根路径，例如 "/Download/GameSave"
     pub backup_root: Option<String>,
+    /// 自建端密码，用于全自动免 Token 登录（可选，可替代 Token）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub password: Option<String>,
 }
 
 /// WebDAV 配置数据结构
