@@ -2,6 +2,7 @@
 use crate::config::model::{AlistConfig, StorageConfig, WebdavConfig, S3Config};
 use reqwest;
 use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
 use std::path::Path;
 use regex::Regex;
 use base64::Engine;
@@ -255,51 +256,234 @@ struct QuarkHashData {
 }
 
 /// 夸克网盘 API 基础配置常量
-const QUARK_API_BASE: &str = "https://drive-pc.quark.cn/1/clouddrive";
-const QUARK_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+/// 
+/// 参考 OpenList quark_uc 驱动：API 使用 drive.quark.cn（非 drive-pc.quark.cn）
+/// UA 必须包含 quark-cloud-drive 标识，否则可能返回 500
+const QUARK_API_BASE: &str = "https://drive.quark.cn/1/clouddrive";
+const QUARK_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) quark-cloud-drive/2.5.20 Chrome/100.0.4896.160 Electron/18.3.5.4-b478491100 Safari/537.36 Channel/pckk_other_ch";
 const QUARK_REFERER: &str = "https://pan.quark.cn/";
 const QUARK_UPLOAD_PART_SIZE: i64 = 8 * 1024 * 1024; // 8MB 分片
 
 /// 将用户输入的 Cookie 字符串转换为 HTTP Cookie 头格式
-/// 支持两种格式：
-/// 1. Netscape cookie 导出格式（制表符分隔：domain flag path secure expires name value）
-/// 2. 标准 HTTP Cookie 格式（name=value; name=value）
+/// 支持三种输入格式：
+/// 1. JSON 数组（EditThisCookie 等浏览器扩展导出格式）
+/// 2. Netscape cookie 文件格式（制表符或空格分隔，curl/wget 导出格式）
+/// 3. 标准 HTTP Cookie 格式（name=value; name=value）
+///
+/// 参考 OpenList quark_uc 驱动的 Cookie 处理方式：直接使用 name=value; name=value 格式
 fn parse_quark_cookie(raw: &str) -> String {
     let trimmed = raw.trim();
-    
+
     // 1. 检测 JSON 格式（EditThisCookie 等浏览器扩展导出的 cookie JSON 数组）
     if trimmed.starts_with('[') || trimmed.starts_with('{') {
         if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(trimmed) {
-            let pairs: Vec<String> = arr.iter().filter_map(|item| {
-                let name = item.get("name")?.as_str()?;
-                let value = item.get("value")?.as_str()?;
-                if name == "isQuark" || name == "isQuark.sig" { return None; }
-                Some(format!("{}={}", name, value))
-            }).collect();
-            if !pairs.is_empty() { return pairs.join("; "); }
-        }
-    }
-    
-    // 2. 检测 Netscape 格式（制表符分隔）
-    if trimmed.contains('\t') {
-        let mut pairs = Vec::new();
-        for line in trimmed.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') { continue; }
-            let parts: Vec<&str> = line.split('\t').collect();
-            if parts.len() >= 7 {
-                let name = parts[5].trim();
-                let value = parts[6].trim();
-                if name == "isQuark" || name == "isQuark.sig" { continue; }
-                if !name.is_empty() { pairs.push(format!("{}={}", name, value)); }
+            let pairs: Vec<String> = arr
+                .iter()
+                .filter_map(|item| {
+                    let name = item.get("name")?.as_str()?;
+                    let value = item.get("value")?.as_str()?;
+                    if name == "isQuark" || name == "isQuark.sig" {
+                        return None;
+                    }
+                    Some(format!("{}={}", name, value))
+                })
+                .collect();
+            if !pairs.is_empty() {
+                return pairs.join("; ");
             }
         }
-        if !pairs.is_empty() { return pairs.join("; "); }
     }
-    
+
+    // 2. 检测 Netscape 格式（使用制表符或正则模式匹配，兼容换行符丢失的变体）
+    //
+    // Netscape cookie 行格式：domain  flag  path  secure  expires  name  value
+    // 其中 flag/secure 为 TRUE 或 FALSE，expires 为数字时间戳
+    // 
+    // 兼容两种变体：
+    // - 标准多行格式：每行 7 个字段，制表符或空格分隔，换行符保留
+    // - 换行符丢失变体：内容被压成一行，但仍以制表符分隔各字段
+    let has_tabs = trimmed.contains('\t');
+
+    // 检测标准多行 Netscape 格式（换行符保留）
+    if !has_tabs || trimmed.lines().count() > 1 {
+        let netscape_line_re = Regex::new(
+            r"^\S+\s+(?:TRUE|FALSE)\s+\S+\s+(?:TRUE|FALSE)\s+\d+\s+\S+\s+\S+"
+        ).unwrap();
+
+        let lines: Vec<&str> = trimmed.lines().collect();
+        let non_comment_lines: Vec<&&str> = lines.iter()
+            .filter(|l| { let lt = l.trim(); !lt.is_empty() && !lt.starts_with('#') })
+            .collect();
+
+        log::info!(
+            "[Quark] Cookie 原始诊断: len={}, 含\\t={}, 总行数={}, 非注释行={}",
+            trimmed.len(), has_tabs, lines.len(), non_comment_lines.len()
+        );
+
+        let matched_count = non_comment_lines.iter()
+            .filter(|l| netscape_line_re.is_match(l.trim()))
+            .count();
+        log::info!(
+            "[Quark] Netscape 正则匹配行数: {} / 非注释行数: {}",
+            matched_count, non_comment_lines.len()
+        );
+
+        let netscape_lines: Vec<&&str> = lines.iter()
+            .filter(|l| {
+                let lt = l.trim();
+                !lt.is_empty() && !lt.starts_with('#') && netscape_line_re.is_match(lt)
+            })
+            .collect();
+
+        if !netscape_lines.is_empty() {
+            let mut pairs = Vec::new();
+            let ws_re = Regex::new(r"\s+").unwrap();
+
+            for line in &netscape_lines {
+                let line = line.trim();
+                let parts: Vec<&str> = ws_re.split(line).collect();
+                if parts.len() >= 7 {
+                    let name = parts[5];
+                    let value = parts[6];
+                    if name == "isQuark" || name == "isQuark.sig" { continue; }
+                    if !name.is_empty() { pairs.push(format!("{}={}", name, value)); }
+                }
+            }
+            if !pairs.is_empty() {
+                log::info!(
+                    "[Quark] 从多行 Netscape 格式解析出 {} 个 Cookie（共 {} 行数据）",
+                    pairs.len(), netscape_lines.len()
+                );
+                return pairs.join("; ");
+            }
+        }
+    }
+
+    // 换行符丢失变体：整个内容被压成一行，由制表符分隔
+    // \n 被完全删除（非替换为 \t），导致每行末尾的 value 与下一行开头的 domain 粘连
+    //
+    // 解法：重建原始多行格式（在域名边界处插入 \n），然后递归复用标准解析器
+    if has_tabs {
+        let flat_parts: Vec<&str> = trimmed.split('\t').collect();
+        log::info!(
+            "[Quark] 换行符丢失变体检测: 制表符切分得 {} 个字段，开始重建多行格式",
+            flat_parts.len()
+        );
+
+        let known_domains: [&str; 2] = ["pan.quark.cn", ".quark.cn"];
+
+        // 重建多行字符串：在域名边界插入 \n，黏连字段拆分为 value + \n + domain
+        let mut rebuilt = String::new();
+        let mut need_newline = false; // 是否需要在下一个字段前插入 \n
+
+        for (i, part) in flat_parts.iter().enumerate() {
+            let trimmed = part.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                // 注释行：保留原样，后跟换行（模拟原始文件中的注释行）
+                if !rebuilt.is_empty() {
+                    rebuilt.push('\n');
+                }
+                rebuilt.push_str(part);
+                need_newline = false;
+                continue;
+            }
+
+            // 检测当前字段是否包含域名（独立或黏连）
+            let mut handled = false;
+            for &domain in &known_domains {
+                if *trimmed == *domain {
+                    // 独立域名：前面需要换行
+                    if i > 0 && need_newline {
+                        rebuilt.push('\n');
+                    }
+                    if !rebuilt.is_empty() && !rebuilt.ends_with('\n') {
+                        rebuilt.push('\t');
+                    }
+                    rebuilt.push_str(trimmed);
+                    need_newline = true;
+                    handled = true;
+                    break;
+                } else if let Some(domain_pos) = trimmed.rfind(domain) {
+                    if domain_pos > 0 {
+                        // 黏连字段 "valuepan.quark.cn" → 拆分为 value\npan.quark.cn
+                        let value_part = &trimmed[..domain_pos];
+                        let domain_part = &trimmed[domain_pos..];
+                        if !rebuilt.is_empty() {
+                            rebuilt.push('\t');
+                        }
+                        rebuilt.push_str(value_part);
+                        rebuilt.push('\n');
+                        rebuilt.push_str(domain_part);
+                        need_newline = true;
+                        handled = true;
+                        break;
+                    }
+                }
+            }
+
+            if !handled {
+                // 普通字段（flag, path, secure, expires, name, value）
+                if !rebuilt.is_empty() && !rebuilt.ends_with('\n') {
+                    rebuilt.push('\t');
+                }
+                rebuilt.push_str(part);
+            }
+        }
+
+        log::debug!(
+            "[Quark] 换行符丢失变体: 重建后字符串长度={}, 换行数={}",
+            rebuilt.len(),
+            rebuilt.matches('\n').count()
+        );
+
+        // 递归调用自身，用重建的多行字符串重新解析
+        let reparsed = parse_quark_cookie(&rebuilt);
+        // 如果递归解析后的结果不是原始格式（即成功解析），则返回
+        if reparsed != rebuilt && reparsed != trimmed.to_string() {
+            log::info!("[Quark] 换行符丢失变体: 重建格式后成功解析");
+            return reparsed;
+        }
+        log::warn!("[Quark] 换行符丢失变体: 重建格式后解析仍失败，回退");
+    }
+
     // 3. 假定已是 HTTP Cookie 格式（name=value; name=value），原样返回
     trimmed.to_string()
 }
+
+/// 在 HTTP Cookie 字符串中设置或替换指定 key 的值
+/// 
+/// 如果 key 已存在则替换其值，否则追加到末尾。
+/// 用于动态更新 __puus / __pus 等响应 Cookie。
+fn set_cookie_value(cookie_str: &str, key: &str, value: &str) -> String {
+    let pair = format!("{}={}", key, value);
+    let mut found = false;
+    let updated: Vec<String> = cookie_str
+        .split(';')
+        .map(|s| {
+            let trimmed = s.trim();
+            if let Some(eq_pos) = trimmed.find('=') {
+                let existing_key = &trimmed[..eq_pos].trim();
+                if **existing_key == *key {
+                    found = true;
+                    return pair.clone();
+                }
+            }
+            trimmed.to_string()
+        })
+        .collect();
+
+    if found {
+        updated.join("; ")
+    } else {
+        // 不存在则追加
+        if cookie_str.trim().is_empty() {
+            pair
+        } else {
+            format!("{}; {}", cookie_str.trim_end_matches(';').trim(), pair)
+        }
+    }
+}
+
 // 夸克 TV 扫码登录配置（基于 open-api-drive.quark.cn）
 // =========================================================================
 
@@ -358,13 +542,19 @@ struct QuarkTVTokenData {
 /// 基于 api.oplist.org SaaS 统一中转网关的直连网盘物理适配器 (免去用户本地部署 Alist 的烦恼)
 pub struct NetdiskBackend {
     config: crate::config::model::NetdiskConfig,
+    /// 夸克网盘 Cookie 缓存（支持内部可变更新 __puus/__pus）
+    /// 
+    /// 参考 OpenList：每次 API 响应后提取 Set-Cookie 中的 __puus 和 __pus，
+    /// 更新此缓存以保证会话不过期。调用方可通过 take_quark_cookie() 获取最新值。
+    quark_cookie: Mutex<String>,
 }
 
 
 impl NetdiskBackend {
     /// 构造全新的 Netdisk 物理适配器
     pub fn new(config: crate::config::model::NetdiskConfig) -> Self {
-        Self { config }
+        let initial_cookie = config.token.clone();
+        Self { config, quark_cookie: Mutex::new(initial_cookie) }
     }
 
     /// 统一锁定中转基准 API URL 地址，彻底解除对本地 Alist 的安装依赖
@@ -701,6 +891,9 @@ impl NetdiskBackend {
     /// 
     /// 自动附加 Cookie、UA、Referer 和公共查询参数 pr=ucpro&fr=pc，
     /// 解析夸克统一错误响应格式 {status, code, message}。
+    /// 
+    /// 参考 OpenList quark_uc 驱动：每次请求后从 Set-Cookie 响应头提取
+    /// __puus 和 __pus，更新内部 Cookie 缓存以维持会话有效性。
     async fn quark_request(
         &self,
         path: &str,
@@ -719,12 +912,13 @@ impl NetdiskBackend {
             _ => anyhow::bail!("夸克请求不支持的 HTTP 方法: {}", method),
         };
 
+        // 使用内部 Cookie 缓存（支持 __puus/__pus 动态更新）
+        let cookie_str = self.quark_cookie.lock().unwrap().clone();
+        let parsed_cookie = parse_quark_cookie(&cookie_str);
+        log::info!("[Quark] Cookie 解析结果 (前200字符): {}", &parsed_cookie[..parsed_cookie.len().min(200)]);
+
         req = req
-            .header("Cookie", {
-                let parsed = parse_quark_cookie(&self.config.token);
-                log::info!("[Quark] Cookie 解析结果 (前200字符): {}", &parsed[..parsed.len().min(200)]);
-                parsed
-            })
+            .header("Cookie", &parsed_cookie)
             .header("User-Agent", QUARK_UA)
             .header("Referer", QUARK_REFERER)
             .header("Accept", "application/json, text/plain, */*")
@@ -737,15 +931,65 @@ impl NetdiskBackend {
         let resp = req.send().await?;
         let status = resp.status();
         log::debug!("[Quark] {} {} → HTTP {}", method, url, status);
+
+        // 参考 OpenList quark_uc 驱动：从 Set-Cookie 响应头提取 __puus 和 __pus，
+        // 更新内部 Cookie 缓存以保证会话有效性（夸克在每个响应中轮换这些 Cookie）
+        self.update_quark_cookies_from_response(&resp);
+
         if !status.is_success() {
             let body = resp.text().await?;
             let preview = &body[..body.len().min(300)];
-            let cookie_preview = &parse_quark_cookie(&self.config.token);
-            let cookie_short = &cookie_preview[..cookie_preview.len().min(150)];
+            let cookie_short = &parsed_cookie[..parsed_cookie.len().min(150)];
             log::warn!("[Quark] 请求失败 (HTTP {}): {}", status, preview);
             anyhow::bail!("夸克 HTTP {} ({} {}): 响应={} | Cookie解析后(前150字符)={}", status, method, path, preview, cookie_short);
         }
         Ok(resp)
+    }
+
+    /// 从响应 Set-Cookie 头中提取 __puus 和 __pus，更新内部 Cookie 缓存
+    /// 
+    /// 参考 OpenList：夸克 API 在每个响应中通过 Set-Cookie 轮换 __puus，
+    /// 驱动必须更新本地 Cookie 否则会话将很快过期。
+    fn update_quark_cookies_from_response(&self, resp: &reqwest::Response) {
+        let mut updated = false;
+        let set_cookie_headers: Vec<String> = resp
+            .headers()
+            .get_all("set-cookie")
+            .iter()
+            .filter_map(|v| v.to_str().ok().map(|s| s.to_string()))
+            .collect();
+
+        for header_value in &set_cookie_headers {
+            // 解析 Set-Cookie: name=value; ... 格式，提取 name=value 对
+            if let Some(cookie_pair) = header_value.split(';').next() {
+                let kv: Vec<&str> = cookie_pair.trim().splitn(2, '=').collect();
+                if kv.len() == 2 {
+                    let name = kv[0].trim();
+                    let value = kv[1].trim();
+                    if name == "__puus" || name == "__pus" {
+                        // 更新内部 Cookie 缓存中的指定 key
+                        let mut cookie_str = self.quark_cookie.lock().unwrap();
+                        *cookie_str = set_cookie_value(&cookie_str, name, value);
+                        updated = true;
+                        log::info!("[Quark] 已从响应更新 Cookie: {}={}", name, value);
+                    }
+                }
+            }
+        }
+
+        if updated && log::log_enabled!(log::Level::Debug) {
+            let guard = self.quark_cookie.lock().unwrap();
+            let preview = &guard[..guard.len().min(200)];
+            log::debug!("[Quark] Cookie 缓存已更新 (前200字符): {}", preview);
+        }
+    }
+
+    /// 获取自上次持久化以来可能被更新的夸克 Cookie 字符串
+    /// 
+    /// 调用方（如命令处理层）应在操作完成后调用此方法，
+    /// 将最新 Cookie 回写到 AppConfig 并持久化。
+    pub fn take_quark_cookie(&self) -> String {
+        self.quark_cookie.lock().unwrap().clone()
     }
 
     /// 解析夸克 API 响应的 JSON body，并检查错误状态
@@ -764,7 +1008,7 @@ impl NetdiskBackend {
                 // 常见错误码给出中文排查指引
                 let hint = match code {
                     31001 => {
-                        let parsed_len = parse_quark_cookie(&self.config.token).len();
+                        let parsed_len = parse_quark_cookie(&self.quark_cookie.lock().unwrap()).len();
                         format!("：Cookie 已过期或无效（已解析 {} 个字符）。请重新从 pan.quark.cn 复制 Cookie", parsed_len)
                     },
                     _ => String::new(),
@@ -850,15 +1094,23 @@ impl NetdiskBackend {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()?;
+
+        // 提取 Cookie 字符串（在 .await 前释放 MutexGuard）
+        let cookie_for_req = parse_quark_cookie(&self.quark_cookie.lock().unwrap());
+
         let resp = client
             .post(&url)
-            .header("Cookie", parse_quark_cookie(&self.config.token))
+            .header("Cookie", &cookie_for_req)
             .header("User-Agent", QUARK_UA)
             .header("Referer", QUARK_REFERER)
             .header("Content-Type", "application/json")
             .json(&body)
             .send()
             .await?;
+
+        // 从响应中提取并更新 __puus/__pus Cookie
+        self.update_quark_cookies_from_response(&resp);
+
         let resp_body = resp.text().await?;
 
         // 成功创建：从响应 data.fid 直接提取
@@ -1209,13 +1461,18 @@ impl NetdiskBackend {
             let download_url = self.quark_get_download_url(&file.fid).await?;
 
             // 下载文件内容
+            // 提取 Cookie 字符串（在 .await 前释放 MutexGuard）
+            let cookie_for_dl = parse_quark_cookie(&self.quark_cookie.lock().unwrap());
             let resp = reqwest::Client::new()
                 .get(&download_url)
-                .header("Cookie", parse_quark_cookie(&self.config.token))
+                .header("Cookie", &cookie_for_dl)
                 .header("User-Agent", QUARK_UA)
                 .header("Referer", QUARK_REFERER)
                 .send()
                 .await?;
+
+            // 从下载响应中提取并更新 __puus/__pus Cookie
+            self.update_quark_cookies_from_response(&resp);
 
             let status = resp.status();
             if !status.is_success() {
