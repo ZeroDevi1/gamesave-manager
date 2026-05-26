@@ -1449,16 +1449,32 @@ impl NetdiskBackend {
         // 夸克网盘直连 Cookie API
         if driver.contains("quark") {
             let remote = remote_path.trim_matches('/');
-            let (parent_path, file_name) = match remote.rsplit_once('/') {
-                Some((p, f)) => (p, f),
-                None => ("", remote),
+
+            // 检测是否为裸文件 fid（32位十六进制，无路径分隔符），
+            // 常见于 list_dir 返回的 fid 被前端当作路径传入还原流程的场景
+            let is_bare_fid = remote.len() == 32
+                && remote.chars().all(|c| c.is_ascii_hexdigit())
+                && !remote.contains('/');
+
+            // 按路径或 fid 获取文件的真实 fid，用于请求下载直链
+            let file_fid = if is_bare_fid {
+                // 直接使用传入的裸 fid 作为文件标识，跳过父目录路径解析
+                remote.to_string()
+            } else {
+                // 正常路径解析：父目录路径 → 父目录 fid → 按文件名查找文件 → 获取文件 fid
+                let (parent_path, file_name) = match remote.rsplit_once('/') {
+                    Some((p, f)) => (p, f),
+                    None => ("", remote),
+                };
+                let parent_fid = self.quark_resolve_path(parent_path).await?;
+                let files = self.quark_list_by_fid(&parent_fid).await?;
+                let file = files.iter()
+                    .find(|f| f.file_name == file_name && f.file)
+                    .ok_or_else(|| anyhow::anyhow!("夸克网盘文件不存在: {}", remote_path))?;
+                file.fid.clone()
             };
-            let parent_fid = self.quark_resolve_path(parent_path).await?;
-            let files = self.quark_list_by_fid(&parent_fid).await?;
-            let file = files.iter()
-                .find(|f| f.file_name == file_name && f.file)
-                .ok_or_else(|| anyhow::anyhow!("夸克网盘文件不存在: {}", remote_path))?;
-            let download_url = self.quark_get_download_url(&file.fid).await?;
+
+            let download_url = self.quark_get_download_url(&file_fid).await?;
 
             // 下载文件内容
             // 提取 Cookie 字符串（在 .await 前释放 MutexGuard）
@@ -1501,12 +1517,20 @@ impl NetdiskBackend {
         if driver.contains("quark") {
             let fid = self.quark_resolve_path(path).await?;
             let files = self.quark_list_by_fid(&fid).await?;
+            let clean_parent = path.trim_end_matches('/');
             let entries = files.into_iter().map(|f| {
                 let dt = chrono::DateTime::from_timestamp_millis(f.updated_at)
                     .unwrap_or_else(|| chrono::Utc::now());
+                // 构造完整路径（parent_path/file_name），方便 download_file 直接使用
+                // 同时保留 fid 以支持通过裸 fid 下载的快速通道
+                let full_path = if clean_parent.is_empty() || clean_parent == "." {
+                    f.file_name.clone()
+                } else {
+                    format!("{}/{}", clean_parent, f.file_name)
+                };
                 RemoteFileEntry {
                     name: f.file_name,
-                    path: f.fid.clone(),
+                    path: full_path,
                     is_dir: !f.file,
                     size: f.size,
                     modified: Some(dt.to_rfc3339()),
