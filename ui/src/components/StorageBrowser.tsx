@@ -78,7 +78,6 @@ interface StorageBrowserProps {
 export default function StorageBrowser({ tempConfig, onBackupRootChange }: StorageBrowserProps) {
   const styles = useStyles()
   const { addToast } = useAppStore()
-  const [path, setPath] = useState('/')
   const [entries, setEntries] = useState<RemoteFileEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

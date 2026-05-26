@@ -105,7 +105,6 @@ export default function SettingsPanel() {
   // 夸克 TV 扫码登录状态
   const [tvQrOpen, setTvQrOpen] = useState(false)
   const [tvQrImage, setTvQrImage] = useState('')
-  const [tvQrToken, setTvQrToken] = useState('')
   const [tvQrPolling, setTvQrPolling] = useState(false)
 
   // 初始化拉取全局配置文件并渲染表单
@@ -364,7 +363,6 @@ export default function SettingsPanel() {
       setTvQrPolling(false)
       const [qrData, queryToken] = await quarkTvGetQrCode()
       setTvQrImage(`data:image/png;base64,${qrData}`)
-      setTvQrToken(queryToken)
       
       // 开始轮询
       setTvQrPolling(true)
