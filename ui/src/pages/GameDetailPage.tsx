@@ -24,11 +24,13 @@ import {
   Clock24Regular,
   Document24Regular,
   CloudArrowDown24Regular,
+  History24Regular,
+  FolderOpen24Regular,
 } from '@fluentui/react-icons'
 import { useEffect, useState } from 'react'
 import { useGames } from '../hooks/useGames'
 import { useBackup } from '../hooks/useBackup'
-import { scanGameSaves, convertFileSrc } from '../services/tauri'
+import { scanGameSaves, convertFileSrc, loadConfig } from '../services/tauri'
 import type { SaveFile } from '../services/tauri'
 import BackupDialog from '../components/BackupDialog'
 import RestoreDialog from '../components/RestoreDialog'
@@ -106,6 +108,31 @@ const useStyles = makeStyles({
     minWidth: '360px',
     wordBreak: 'break-all',
   },
+  // 表格行 hover 高亮效果
+  tableRow: {
+    transition: 'background-color 0.15s ease',
+    ':hover': {
+      backgroundColor: tokens.colorNeutralBackground1Hover,
+    },
+  },
+  // 斑马纹交替背景
+  tableRowEven: {
+    backgroundColor: tokens.colorNeutralBackground2,
+  },
+  // 空状态居中展示
+  emptyState: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '40px 0',
+    gap: '12px',
+    color: tokens.colorNeutralForeground3,
+  },
+  emptyIcon: {
+    fontSize: '36px',
+    opacity: 0.35,
+  },
 })
 
 export default function GameDetailPage() {
@@ -118,6 +145,7 @@ export default function GameDetailPage() {
   const [backupOpen, setBackupOpen] = useState(false)
   const [restoreOpen, setRestoreOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [remoteStorageLabel, setRemoteStorageLabel] = useState('云端')
 
   const game = games.find((g) => g.id === gameId)
 
@@ -137,6 +165,27 @@ export default function GameDetailPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId])
+  // 根据已配置的存储类型动态生成远程备份标题
+  useEffect(() => {
+    loadConfig().then((config) => {
+      if (!config.storage) {
+        setRemoteStorageLabel('云端')
+        return
+      }
+      const driver = 'driver' in config.storage ? (config.storage as { driver?: string }).driver : undefined
+      if (driver?.includes('baidu')) setRemoteStorageLabel('百度网盘')
+      else if (driver === 'quark_uc') setRemoteStorageLabel('夸克网盘 (Cookie)')
+      else if (driver === 'quark_uc_tv') setRemoteStorageLabel('夸克TV')
+      else if (driver?.includes('quark')) setRemoteStorageLabel('夸克网盘')
+      else if (driver?.includes('onedrive')) setRemoteStorageLabel('OneDrive')
+      else if (driver?.includes('alicloud')) setRemoteStorageLabel('阿里云盘')
+      else if (config.storage.type === 'alist') setRemoteStorageLabel('自建 Alist')
+      else if (config.storage.type === 'webdav') setRemoteStorageLabel('WebDAV')
+      else if (config.storage.type === 's3') setRemoteStorageLabel('S3 对象存储')
+      else if (config.storage.type === 'netdisk') setRemoteStorageLabel('直连云盘')
+      else setRemoteStorageLabel('云端')
+    }).catch(() => setRemoteStorageLabel('云端'))
+  }, [])
 
   const handleBackup = async (type: 'full' | 'incremental') => {
     try {
@@ -255,7 +304,11 @@ export default function GameDetailPage() {
           </Button>
         </div>
         {backup.history.length === 0 ? (
-          <div style={{ color: tokens.colorNeutralForeground3 }}>暂无备份记录</div>
+          <div className={styles.emptyState}>
+            <History24Regular className={styles.emptyIcon} />
+            <span>暂无本地备份记录</span>
+            <span style={{ fontSize: '13px' }}>点击上方"备份"按钮创建第一个备份</span>
+          </div>
         ) : (
           <Table>
             <TableHeader>
@@ -268,7 +321,7 @@ export default function GameDetailPage() {
             </TableHeader>
             <TableBody>
               {backup.history.map((h) => (
-                <TableRow key={h.timestamp}>
+                <TableRow key={h.timestamp} className={`${styles.tableRow} ${backup.history.indexOf(h) % 2 === 1 ? styles.tableRowEven : ''}`}>
                   <TableCell>
                     <Clock24Regular style={{ marginRight: '8px', verticalAlign: 'middle' }} />
                     {new Date(h.timestamp).toLocaleString('zh-CN')}
@@ -299,10 +352,10 @@ export default function GameDetailPage() {
         )}
       </div>
 
-      {/* 远程备份（Alist 网盘）（第二位） */}
+      {/* 远程备份 */}
       <div className={styles.section}>
         <div className={styles.sectionHeader}>
-          <Title2>远程备份（Alist 网盘）</Title2>
+          <Title2>{`远程备份（${remoteStorageLabel}）`}</Title2>
           <Button size="small" onClick={() => backup.fetchRemoteBackups()}>
             刷新
           </Button>
@@ -310,7 +363,11 @@ export default function GameDetailPage() {
         {backup.loadingRemote ? (
           <Spinner label="加载中..." />
         ) : backup.remoteBackups.length === 0 ? (
-          <div style={{ color: tokens.colorNeutralForeground3 }}>暂无远程备份</div>
+          <div className={styles.emptyState}>
+            <CloudArrowDown24Regular className={styles.emptyIcon} />
+            <span>暂无远程备份</span>
+            <span style={{ fontSize: '13px' }}>请先在设置中配置云端存储，然后执行备份即可同步到云端</span>
+          </div>
         ) : (
           <Table>
             <TableHeader>
@@ -323,7 +380,7 @@ export default function GameDetailPage() {
             </TableHeader>
             <TableBody>
               {backup.remoteBackups.map((rb) => (
-                <TableRow key={rb.path}>
+                <TableRow key={rb.path} className={`${styles.tableRow} ${backup.remoteBackups.indexOf(rb) % 2 === 1 ? styles.tableRowEven : ''}`}>
                   <TableCell className={styles.fileNameCell} title={rb.name}>
                     {rb.name}
                   </TableCell>
@@ -359,7 +416,11 @@ export default function GameDetailPage() {
         {savesLoading ? (
           <Spinner label="扫描中..." />
         ) : saves.length === 0 ? (
-          <div style={{ color: tokens.colorNeutralForeground3 }}>未找到存档文件</div>
+          <div className={styles.emptyState}>
+            <FolderOpen24Regular className={styles.emptyIcon} />
+            <span>未找到存档文件</span>
+            <span style={{ fontSize: '13px' }}>请确认游戏存档路径配置是否正确</span>
+          </div>
         ) : (
           <Table>
             <TableHeader>
@@ -371,7 +432,7 @@ export default function GameDetailPage() {
             </TableHeader>
             <TableBody>
               {saves.map((file) => (
-                <TableRow key={file.path}>
+                <TableRow key={file.path} className={`${styles.tableRow} ${saves.indexOf(file) % 2 === 1 ? styles.tableRowEven : ''}`}>
                   <TableCell>
                     <Document24Regular style={{ marginRight: '8px', verticalAlign: 'middle' }} />
                     {file.relative_path}

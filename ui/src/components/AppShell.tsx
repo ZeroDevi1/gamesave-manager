@@ -46,6 +46,9 @@ const useStyles = makeStyles({
     transition: 'width 250ms cubic-bezier(0.1, 0.9, 0.2, 1)',
     width: '56px',
     boxSizing: 'border-box',
+    // 亚克力/玻璃质感：半透明背景 + 毛玻璃模糊
+    backdropFilter: 'blur(20px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
   },
   sidebarExpanded: {
     width: '240px',

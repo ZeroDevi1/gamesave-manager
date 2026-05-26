@@ -11,6 +11,7 @@ import {
   TableCell,
   TableCellLayout,
   makeStyles,
+  tokens,
   MessageBar,
   MessageBarBody,
 } from '@fluentui/react-components'
@@ -21,6 +22,7 @@ import {
   ArrowSync24Regular,
   Checkmark24Regular,
   Save24Regular,
+  FolderOpen24Regular,
 } from '@fluentui/react-icons'
 import { useState, useEffect, useCallback } from 'react'
 import { storageListDir, loadConfig, saveConfig } from '../services/tauri'
@@ -39,14 +41,41 @@ const useStyles = makeStyles({
     alignItems: 'center',
     gap: '8px',
   },
+  // 表格行 hover 高亮效果
+  tableRow: {
+    transition: 'background-color 0.15s ease',
+    ':hover': {
+      backgroundColor: tokens.colorNeutralBackground1Hover,
+    },
+  },
+  // 斑马纹交替背景
+  tableRowEven: {
+    backgroundColor: tokens.colorNeutralBackground2,
+  },
+  // 空状态居中展示
+  emptyState: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '40px 0',
+    gap: '12px',
+    color: tokens.colorNeutralForeground3,
+  },
+  emptyIcon: {
+    fontSize: '36px',
+    opacity: 0.35,
+  },
 })
 
 interface StorageBrowserProps {
   /** 临时未存盘的云端存储配置（在设置向导预览时传入以实时浏览，未传则默认采用已保存的激活后端） */
   tempConfig?: StorageConfig
+  /** 备份根路径变更回调：父组件通过此回调同步维护独立的 backupRoot 状态，打破 tempConfig 模式下的保存死锁 */
+  onBackupRootChange?: (newRoot: string) => void
 }
 
-export default function StorageBrowser({ tempConfig }: StorageBrowserProps) {
+export default function StorageBrowser({ tempConfig, onBackupRootChange }: StorageBrowserProps) {
   const styles = useStyles()
   const { addToast } = useAppStore()
   const [path, setPath] = useState('/')
@@ -54,6 +83,12 @@ export default function StorageBrowser({ tempConfig }: StorageBrowserProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [backupRoot, setBackupRoot] = useState<string>('')
+  // 面包屑导航：name 用于显示，path(fid) 用于后端请求
+  const [breadcrumbs, setBreadcrumbs] = useState<{ name: string; path: string }[]>([
+    { name: '/', path: '/' },
+  ])
+  const displayPath = breadcrumbs.map((b) => b.name).join('/').replace(/\/\//g, '/')
+  const currentPath = breadcrumbs[breadcrumbs.length - 1]?.path ?? '/'
 
   // 载入当前激活后端的全局云盘物理备份根路径
   const fetchBackupRoot = useCallback(async () => {
@@ -66,11 +101,13 @@ export default function StorageBrowser({ tempConfig }: StorageBrowserProps) {
         if (tempConfig.type === 'alist') root = tempConfig.backup_root ?? ''
         else if (tempConfig.type === 'webdav') root = tempConfig.backup_root ?? ''
         else if (tempConfig.type === 's3') root = tempConfig.backup_root ?? ''
+        else if (tempConfig.type === 'netdisk') root = tempConfig.backup_root ?? ''
       } else if (config.storage) {
         // 否则加载已经存盘配置项的根路径
         if (config.storage.type === 'alist') root = config.storage.backup_root ?? ''
         else if (config.storage.type === 'webdav') root = config.storage.backup_root ?? ''
         else if (config.storage.type === 's3') root = config.storage.backup_root ?? ''
+        else if (config.storage.type === 'netdisk') root = config.storage.backup_root ?? ''
       } else if (config.alist) {
         // 向下兼容 fallback
         root = config.alist.backup_root ?? ''
@@ -92,39 +129,42 @@ export default function StorageBrowser({ tempConfig }: StorageBrowserProps) {
     try {
       const cfg: StorageConfig | undefined = tempConfigStr ? JSON.parse(tempConfigStr) : undefined;
       // 传入临时配置或 undefined，由后端工厂智能构建具体分发实例
-      const data = await storageListDir(path, cfg)
+      const data = await storageListDir(currentPath, cfg)
       setEntries(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setLoading(false)
     }
-  }, [path, tempConfigStr])
+  }, [currentPath, tempConfigStr])
 
   useEffect(() => {
     loadDir()
     fetchBackupRoot()
-  }, [path, loadDir, fetchBackupRoot])
+  }, [currentPath, loadDir, fetchBackupRoot])
 
   // 一键将当前目录设为该存储后端的云端备份物理根目录，实现动态备份路径锁定
   const handleSetBackupRoot = async () => {
     try {
-      const config = await loadConfig()
-      
-      // 1. 如果是临时配置模式，我们需要提醒用户先保存整个连接表单
+      // 临时配置模式：通过回调将 backupRoot 上报给父组件（SettingsPanel），
+      // 待用户保存设置后一并持久化，打破 tempConfig 模式下的保存死锁
       if (tempConfig) {
-        addToast(`测试模式下，请先点击下方的“保存设置”以应用该配置`, 'warning')
+        setBackupRoot(displayPath)
+        onBackupRootChange?.(displayPath)
+        addToast(`备份根路径已暂存为: ${displayPath}（点击下方"保存设置"后生效）`, 'success')
         return
       }
 
-      // 2. 否则，获取已激活的存储变体并修改
+      const config = await loadConfig()
+      
+      // 如果配置尚未保存过
       if (!config.storage) {
-        // 向下兼容迁移：如果磁盘中还只是老版的 alist 字段
         if (config.alist) {
-          config.alist.backup_root = path
+          config.alist.backup_root = displayPath
           await saveConfig(config)
-          setBackupRoot(path)
-          addToast(`云端备份根路径已成功设置为: ${path}`, 'success')
+          setBackupRoot(displayPath)
+          onBackupRootChange?.(displayPath)
+          addToast(`云端备份根路径已成功设置为: ${displayPath}`, 'success')
           return
         }
         addToast('请先配置并保存云端存储连接配置', 'error')
@@ -134,20 +174,20 @@ export default function StorageBrowser({ tempConfig }: StorageBrowserProps) {
       // 根据不同的激活变体注入根路径
       switch (config.storage.type) {
         case 'alist':
-          config.storage.backup_root = path
+        case 'netdisk':
+        case 's3':
+          config.storage.backup_root = displayPath
           break;
         case 'webdav':
-          config.storage.endpoint = config.storage.endpoint.replace(/\/+$/, '') // 清洗 endpoint 的物理尾部斜杠
-          config.storage.backup_root = path
-          break;
-        case 's3':
-          config.storage.backup_root = path
+          config.storage.endpoint = config.storage.endpoint.replace(/\/+$/, '')
+          config.storage.backup_root = displayPath
           break;
       }
 
       await saveConfig(config)
-      setBackupRoot(path)
-      addToast(`云端备份根路径已成功设置为: ${path}`, 'success')
+      setBackupRoot(displayPath)
+      onBackupRootChange?.(displayPath)
+      addToast(`云端备份根路径已成功设置为: ${displayPath}`, 'success')
     } catch (err) {
       addToast(err instanceof Error ? err.message : '设置失败', 'error')
     }
@@ -167,13 +207,10 @@ export default function StorageBrowser({ tempConfig }: StorageBrowserProps) {
         <Button
           icon={<ArrowLeft24Regular />}
           size="small"
-          disabled={path === '/'}
-          onClick={() => {
-            const parent = path.substring(0, path.lastIndexOf('/')) || '/'
-            setPath(parent)
-          }}
+          disabled={breadcrumbs.length <= 1}
+          onClick={() => setBreadcrumbs((prev) => prev.slice(0, -1))}
         />
-        <Input value={path} readOnly style={{ flexGrow: 1 }} />
+        <Input value={displayPath} readOnly style={{ flexGrow: 1 }} />
         <Button
           icon={<ArrowSync24Regular />}
           size="small"
@@ -182,15 +219,15 @@ export default function StorageBrowser({ tempConfig }: StorageBrowserProps) {
           title="刷新目录"
         />
         <Button
-          icon={path === backupRoot ? <Checkmark24Regular /> : <Save24Regular />}
-          appearance={path === backupRoot ? 'primary' : 'outline'}
+          icon={displayPath === backupRoot ? <Checkmark24Regular /> : <Save24Regular />}
+          appearance={displayPath === backupRoot ? 'primary' : 'outline'}
           size="small"
           onClick={handleSetBackupRoot}
           disabled={loading}
           title="将当前进入的网盘文件夹设为游戏备份的归档根目录"
-          style={path === backupRoot ? { backgroundColor: '#107c41', color: 'white', borderColor: '#107c41' } : {}}
+          style={displayPath === backupRoot ? { backgroundColor: '#107c41', color: 'white', borderColor: '#107c41' } : {}}
         >
-          {path === backupRoot ? '已设为备份根目录' : '设为备份根目录'}
+          {displayPath === backupRoot ? '已设为备份根目录' : '设为备份根目录'}
         </Button>
       </div>
 
@@ -214,17 +251,22 @@ export default function StorageBrowser({ tempConfig }: StorageBrowserProps) {
           <TableBody>
             {entries.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={3} style={{ textAlign: 'center', padding: '24px 0', color: '#888' }}>
-                  该目录下没有任何文件或文件夹 (空文件夹)
+                <TableCell colSpan={3}>
+                  <div className={styles.emptyState}>
+                    <FolderOpen24Regular className={styles.emptyIcon} />
+                    <span>该目录下没有任何文件或文件夹</span>
+                    <span style={{ fontSize: '13px' }}>尝试浏览其他目录，或在此创建备份后自动生成</span>
+                  </div>
                 </TableCell>
               </TableRow>
             ) : (
               entries.map((entry) => (
                 <TableRow
                   key={entry.path}
+                  className={`${styles.tableRow} ${entries.indexOf(entry) % 2 === 1 ? styles.tableRowEven : ''}`}
                   onClick={() => {
                     if (entry.is_dir) {
-                      setPath(entry.path)
+                      setBreadcrumbs((prev) => [...prev, { name: entry.name, path: entry.path }])
                     }
                   }}
                   style={{ cursor: entry.is_dir ? 'pointer' : 'default' }}

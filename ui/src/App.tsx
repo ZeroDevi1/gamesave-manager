@@ -3,7 +3,7 @@ import {
   FluentProvider,
   Spinner,
 } from '@fluentui/react-components'
-import { HashRouter, Routes, Route } from 'react-router-dom'
+import { HashRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import AppShell from './components/AppShell'
 import HomePage from './pages/HomePage'
@@ -13,6 +13,21 @@ import SettingsPage from './pages/SettingsPage'
 import ToastContainer from './components/ToastContainer'
 import { loadConfig } from './services/tauri'
 import { useAppStore } from './store/appStore'
+
+/** 路由动画包装器：通过 location key 触发淡入+上移动效 */
+function AnimatedRoutes() {
+  const location = useLocation()
+  return (
+    <div key={location.pathname} className="page-enter" style={{ height: '100%' }}>
+      <Routes location={location}>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/game/:gameId" element={<GameDetailPage />} />
+        <Route path="/database" element={<GameDbPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+      </Routes>
+    </div>
+  )
+}
 
 function App() {
   const { fluentTheme, setThemeMode } = useAppStore()
@@ -44,12 +59,7 @@ function App() {
     <FluentProvider theme={fluentTheme}>
       <HashRouter>
         <AppShell>
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/game/:gameId" element={<GameDetailPage />} />
-            <Route path="/database" element={<GameDbPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-          </Routes>
+          <AnimatedRoutes />
         </AppShell>
       </HashRouter>
       <ToastContainer />

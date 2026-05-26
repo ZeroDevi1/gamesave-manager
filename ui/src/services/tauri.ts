@@ -412,3 +412,19 @@ export function launchGame(steamAppid: number): Promise<void> {
   return invoke('launch_game', { steamAppid })
 }
 
+// ==================== 夸克 TV 扫码登录 ====================
+
+/** 获取夸克 TV 登录二维码（返回 base64 PNG 图片数据和 query_token） */
+export function quarkTvGetQrCode(): Promise<[string, string]> {
+  return invoke('quark_tv_get_qr_code')
+}
+
+/** 轮询夸克 TV 授权状态（返回 code 或 null） */
+export function quarkTvPollQr(queryToken: string): Promise<string | null> {
+  return invoke('quark_tv_poll_qr', { queryToken })
+}
+
+/** 用授权码交换 AccessToken 和 RefreshToken */
+export function quarkTvExchange(code: string): Promise<[string, string]> {
+  return invoke('quark_tv_exchange', { code })
+}

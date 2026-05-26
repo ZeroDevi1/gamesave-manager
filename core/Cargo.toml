@@ -35,6 +35,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 
 # 哈希
 sha2 = "0.10"
+sha1 = "0.10"
 hex = "0.4"
 
 # 时间处理

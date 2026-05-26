@@ -18,6 +18,9 @@ import {
   alistLogin,
   storageTestConnection,
   storageRefreshAllTokens,
+  quarkTvGetQrCode,
+  quarkTvPollQr,
+  quarkTvExchange,
 } from '../services/tauri'
 import type { StorageConfig } from '../services/tauri'
 import { useAppStore } from '../store/appStore'
@@ -69,6 +72,7 @@ export default function SettingsPanel() {
   const [isConnected, setIsConnected] = useState(false)
   const [testLoading, setTestLoading] = useState(false)
   const [testError, setTestError] = useState<string | null>(null)
+  const [backupRoot, setBackupRoot] = useState<string>('')
 
   // 2. 直连网盘相关配置表单 State (基于 api.oplist.org SaaS 托管免部署)
   const [netdiskDriver, setNetdiskDriver] = useState('baiduyun_go')
@@ -98,6 +102,11 @@ export default function SettingsPanel() {
   const [theme, setTheme] = useState('system')
   const [apiKey, setApiKey] = useState('')
   const [saving, setSaving] = useState(false)
+  // 夸克 TV 扫码登录状态
+  const [tvQrOpen, setTvQrOpen] = useState(false)
+  const [tvQrImage, setTvQrImage] = useState('')
+  const [tvQrToken, setTvQrToken] = useState('')
+  const [tvQrPolling, setTvQrPolling] = useState(false)
 
   // 初始化拉取全局配置文件并渲染表单
   useEffect(() => {
@@ -130,22 +139,26 @@ export default function SettingsPanel() {
           setNetdiskDriver(config.storage.driver)
           setNetdiskToken(config.storage.token)
           setNetdiskRefreshToken(config.storage.refresh_token ?? '') // 同步读取并回显网盘刷新令牌
+          setBackupRoot(config.storage.backup_root ?? '')
         } else if (config.storage.type === 'alist') {
           setAlistUrl(config.storage.base_url)
           setAlistUsername(config.storage.username)
           setAlistToken(config.storage.token ?? '')
           setAlistPassword(config.storage.password ?? '')
           setAlistProvider(config.storage.provider)
+          setBackupRoot(config.storage.backup_root ?? '')
         } else if (config.storage.type === 'webdav') {
           setWebdavEndpoint(config.storage.endpoint)
           setWebdavUsername(config.storage.username)
           setWebdavPassword(config.storage.password)
+          setBackupRoot(config.storage.backup_root ?? '')
         } else if (config.storage.type === 's3') {
           setS3Endpoint(config.storage.endpoint)
           setS3Bucket(config.storage.bucket)
           setS3AccessKeyId(config.storage.access_key_id)
           setS3SecretAccessKey(config.storage.secret_access_key)
           setS3Region(config.storage.region ?? '')
+          setBackupRoot(config.storage.backup_root ?? '')
         }
       } else if (config.alist) {
         // 向下兼容老版本自建 Alist 配置
@@ -168,6 +181,7 @@ export default function SettingsPanel() {
         driver: netdiskDriver,
         token: netdiskToken,
         refresh_token: netdiskRefreshToken || undefined, // 封装并传递刷新令牌
+        backup_root: backupRoot || undefined,
       }
     } else if (storageType === 'alist') {
       return {
@@ -177,6 +191,7 @@ export default function SettingsPanel() {
         token: alistToken || undefined,
         password: alistPassword || undefined,
         provider: alistProvider,
+        backup_root: backupRoot || undefined,
       }
     } else if (storageType === 'webdav') {
       return {
@@ -184,6 +199,7 @@ export default function SettingsPanel() {
         endpoint: webdavEndpoint,
         username: webdavUsername,
         password: webdavPassword,
+        backup_root: backupRoot || undefined,
       }
     } else {
       return {
@@ -193,6 +209,7 @@ export default function SettingsPanel() {
         access_key_id: s3AccessKeyId,
         secret_access_key: s3SecretAccessKey,
         region: s3Region || undefined,
+        backup_root: backupRoot || undefined,
       }
     }
   }
@@ -340,6 +357,50 @@ export default function SettingsPanel() {
       addToast('拉取网盘授权窗口失败，请检查网络或配置', 'error')
     }
   }
+  // 夸克 TV 扫码登录完整流程
+  const handleQuarkTvScan = async () => {
+    try {
+      setTvQrOpen(true)
+      setTvQrPolling(false)
+      const [qrData, queryToken] = await quarkTvGetQrCode()
+      setTvQrImage(`data:image/png;base64,${qrData}`)
+      setTvQrToken(queryToken)
+      
+      // 开始轮询
+      setTvQrPolling(true)
+      const pollInterval = setInterval(async () => {
+        try {
+          const code = await quarkTvPollQr(queryToken)
+          if (code) {
+            clearInterval(pollInterval)
+            setTvQrPolling(false)
+            const [accessToken, refreshToken] = await quarkTvExchange(code)
+            setNetdiskToken(accessToken)
+            setNetdiskRefreshToken(refreshToken)
+            setIsConnected(true)
+            setTvQrOpen(false)
+            addToast('夸克 TV 扫码登录成功！令牌已自动填充。', 'success')
+          }
+        } catch (e) {
+          clearInterval(pollInterval)
+          setTvQrPolling(false)
+          addToast(`扫码轮询异常: ${e}`, 'error')
+        }
+      }, 2000)
+
+      // 2 分钟超时自动停止
+      setTimeout(() => {
+        clearInterval(pollInterval)
+        if (tvQrPolling) {
+          setTvQrPolling(false)
+          addToast('扫码登录超时，请重试', 'warning')
+        }
+      }, 120000)
+    } catch (err) {
+      setTvQrOpen(false)
+      addToast(`获取二维码失败: ${err}`, 'error')
+    }
+  }
 
   // 针对自建 Alist 专属的登录换取 Token 操作
   const handleAlistLogin = async () => {
@@ -385,7 +446,7 @@ export default function SettingsPanel() {
           driver: netdiskDriver,
           token: netdiskToken,
           refresh_token: netdiskRefreshToken || undefined, // 保存时携带刷新令牌
-          backup_root: config.storage?.type === 'netdisk' ? config.storage.backup_root : undefined,
+          backup_root: backupRoot || undefined,
         }
       } else if (storageType === 'alist') {
         config.storage = {
@@ -395,7 +456,7 @@ export default function SettingsPanel() {
           token: alistToken || undefined,
           password: alistPassword || undefined,
           provider: alistProvider,
-          backup_root: config.storage?.type === 'alist' ? config.storage.backup_root : undefined,
+          backup_root: backupRoot || undefined,
         }
       } else if (storageType === 'webdav') {
         config.storage = {
@@ -403,7 +464,7 @@ export default function SettingsPanel() {
           endpoint: webdavEndpoint,
           username: webdavUsername,
           password: webdavPassword,
-          backup_root: config.storage?.type === 'webdav' ? config.storage.backup_root : undefined,
+          backup_root: backupRoot || undefined,
         }
       } else if (storageType === 's3') {
         config.storage = {
@@ -413,7 +474,7 @@ export default function SettingsPanel() {
           access_key_id: s3AccessKeyId,
           secret_access_key: s3SecretAccessKey,
           region: s3Region || undefined,
-          backup_root: config.storage?.type === 's3' ? config.storage.backup_root : undefined,
+          backup_root: backupRoot || undefined,
         }
       }
 
@@ -447,7 +508,7 @@ export default function SettingsPanel() {
             <Radio value="netdisk" label="直连网盘 (SaaS 免部署 - 百度网盘 / OneDrive / 阿里云盘 / 夸克)" />
             <Radio value="alist" label="自建 Alist 服务 (折腾折腾 - 私有化本地部署或自建服务器)" />
             <Radio value="webdav" label="标准 WebDAV 协议 (如坚果云、Nextcloud、私有 NAS 挂载)" />
-            <Radio value="s3" label="标准对象存储 S3 (Beta - Cloudflare R2 / AWS S3 / MinIO 桶)" />
+            <Radio value="s3" label="标准对象存储 S3 (即将推出)" disabled />
           </RadioGroup>
         </div>
 
@@ -486,34 +547,77 @@ export default function SettingsPanel() {
                     <Radio value="baiduyun_go" label="百度网盘" />
                     <Radio value="onedrive_go" label="OneDrive" />
                     <Radio value="alicloud_qr" label="阿里云盘" />
-                    <Radio value="quarkyun_fn" label="夸克网盘" />
+                    <Radio value="quark_uc" label="夸克网盘 (Cookie)" />
+                    <Radio value="quark_uc_tv" label="夸克TV (扫码登录)" />
                   </RadioGroup>
                 </div>
-                <div className={styles.row}>
-                  <Label htmlFor="netdiskToken">网盘授权令牌 (Access Token)</Label>
-                  <div className={styles.inlineAuthRow}>
+                {/* 根据网盘类型动态显示不同的认证字段 */}
+                {netdiskDriver === 'quark_uc' ? (
+                  <div className={styles.row}>
+                    <Label htmlFor="netdiskToken">Cookie 字符串</Label>
                     <Input
                       id="netdiskToken"
                       value={netdiskToken}
                       onChange={(e) => setNetdiskToken(e.target.value)}
-                      placeholder="点击右侧一键授权，授权完成后 Token 会自动抓取到这里"
-                      style={{ flexGrow: 1 }}
+                      placeholder="从浏览器 F12 → Application → Cookies 复制完整 Cookie 字符串"
                     />
-                    <Button appearance="primary" onClick={handleOplistAuth}>
-                      🔐 一键免配置授权
-                    </Button>
                   </div>
-                </div>
-                <div className={styles.row}>
-                  <Label htmlFor="netdiskRefreshToken">网盘刷新令牌 (Refresh Token)</Label>
-                  <Input
-                    id="netdiskRefreshToken"
-                    value={netdiskRefreshToken}
-                    onChange={(e) => setNetdiskRefreshToken(e.target.value)}
-                    placeholder="授权完成后，Refresh Token 会自动抓取并填充至此处 (如支持)"
-                  />
-                </div>
+                ) : (
+                  <>
+                    <div className={styles.row}>
+                      <Label htmlFor="netdiskToken">网盘授权令牌 (Access Token)</Label>
+                      <div className={styles.inlineAuthRow}>
+                        <Input
+                          id="netdiskToken"
+                          value={netdiskToken}
+                          onChange={(e) => setNetdiskToken(e.target.value)}
+                          placeholder="点击右侧一键授权，授权完成后 Token 会自动抓取到这里"
+                          style={{ flexGrow: 1 }}
+                        />
+                        <Button appearance="primary" onClick={
+                          netdiskDriver === 'quark_uc_tv' ? handleQuarkTvScan : handleOplistAuth
+                        }>
+                          {netdiskDriver === 'quark_uc_tv' ? '📱 扫码登录' : '🔐 一键免配置授权'}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className={styles.row}>
+                      <Label htmlFor="netdiskRefreshToken">网盘刷新令牌 (Refresh Token)</Label>
+                      <Input
+                        id="netdiskRefreshToken"
+                        value={netdiskRefreshToken}
+                        onChange={(e) => setNetdiskRefreshToken(e.target.value)}
+                        placeholder="授权完成后，Refresh Token 会自动抓取并填充至此处 (如支持)"
+                      />
+                    </div>
               </>
+            )}
+              </>
+            )}
+            {/* 夸克 TV 扫码弹窗 */}
+            {tvQrOpen && (
+              <div style={{
+                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex',
+                alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+              }}>
+                <div style={{
+                  backgroundColor: tokens.colorNeutralBackground1,
+                  borderRadius: '12px', padding: '24px', textAlign: 'center',
+                  maxWidth: '380px',
+                }}>
+                  <h3 style={{ margin: '0 0 12px' }}>夸克 TV 扫码登录</h3>
+                  {tvQrImage ? (
+                    <img src={tvQrImage} alt="QR Code" style={{ width: '280px', height: '280px' }} />
+                  ) : (
+                    <Spinner label="加载二维码中..." />
+                  )}
+                  <p style={{ color: tokens.colorNeutralForeground3, fontSize: '13px', margin: '12px 0' }}>
+                    {tvQrPolling ? '请使用夸克 App 扫描二维码授权' : '正在等待授权...'}
+                  </p>
+                  <Button onClick={() => setTvQrOpen(false)}>取消</Button>
+                </div>
+              </div>
             )}
 
             {/* 2. 自建 Alist 表单区域 */}
@@ -666,7 +770,7 @@ export default function SettingsPanel() {
       {isConnected && (
         <div className={styles.section}>
           <div className={styles.sectionTitle}>云端备份目录锁</div>
-          <StorageBrowser tempConfig={getTempStorageConfig()} />
+          <StorageBrowser tempConfig={getTempStorageConfig()} onBackupRootChange={setBackupRoot} />
         </div>
       )}
 

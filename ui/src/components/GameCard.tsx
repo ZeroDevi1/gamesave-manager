@@ -22,13 +22,15 @@ const useStyles = makeStyles({
     width: '200px',
     cursor: 'pointer',
     transition: 'transform 0.2s, box-shadow 0.2s',
+    // hover 微光效果：上浮 + 发光阴影
     ':hover': {
-      transform: 'translateY(-4px)',
-      boxShadow: tokens.shadow16,
+      transform: 'translateY(-6px)',
+      boxShadow: `0 12px 32px ${tokens.colorBrandStroke1}33, ${tokens.shadow16}`,
     },
   },
   preview: {
-    height: '260px',
+    // 统一 2:3 比例封面（200×300）
+    height: '300px',
     backgroundColor: tokens.colorNeutralBackground1,
     display: 'flex',
     alignItems: 'center',
@@ -42,16 +44,17 @@ const useStyles = makeStyles({
     objectFit: 'cover',
   },
   placeholder: {
-    width: '72px',
-    height: '72px',
-    borderRadius: '50%',
-    backgroundColor: tokens.colorBrandBackground,
+    width: '100%',
+    height: '100%',
+    // 渐变占位：品牌色渐变而不是纯色圆形
+    background: `linear-gradient(135deg, ${tokens.colorBrandBackground2} 0%, ${tokens.colorBrandBackground} 100%)`,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     color: tokens.colorNeutralForegroundOnBrand,
-    fontSize: '28px',
+    fontSize: '48px',
     fontWeight: 'bold',
+    borderRadius: tokens.borderRadiusMedium,
   },
   actions: {
     display: 'flex',

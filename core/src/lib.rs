@@ -40,6 +40,10 @@ pub fn run() {
             storage::commands::storage_test_connection,
             storage::commands::storage_list_dir,
             storage::commands::storage_refresh_all_tokens,
+            // 夸克 TV 扫码登录命令
+            storage::commands::quark_tv_get_qr_code,
+            storage::commands::quark_tv_poll_qr,
+            storage::commands::quark_tv_exchange,
             // 游戏相关命令
             game::commands::get_games,
             game::commands::add_game,

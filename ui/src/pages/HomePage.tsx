@@ -15,7 +15,7 @@ import {
   MessageBar,
   MessageBarBody,
 } from '@fluentui/react-components'
-import { Add24Regular, Search24Regular } from '@fluentui/react-icons'
+import { Add24Regular, Search24Regular, Games24Regular } from '@fluentui/react-icons'
 import { useState } from 'react'
 import GameCard from '../components/GameCard'
 import BackupDialog from '../components/BackupDialog'
@@ -64,9 +64,18 @@ const useStyles = makeStyles({
     flexShrink: 0,
   },
   empty: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
     textAlign: 'center',
     color: tokens.colorNeutralForeground3,
-    padding: '60px 0',
+    padding: '80px 0',
+    gap: '16px',
+  },
+  emptyIcon: {
+    fontSize: '48px',
+    opacity: 0.4,
   },
 })
 
@@ -151,7 +160,13 @@ export default function HomePage() {
         <Spinner label="加载游戏中..." size="huge" />
       ) : filteredGames.length === 0 ? (
         <div className={styles.empty}>
-          {search ? '未找到匹配的游戏' : '暂无游戏，点击右上角添加'}
+          <Games24Regular className={styles.emptyIcon} />
+          <span>{search ? '未找到匹配的游戏，试试其他关键词' : '还没有添加任何游戏'}</span>
+          {!search && (
+            <Button icon={<Add24Regular />} appearance="primary" onClick={() => setAddOpen(true)}>
+              添加第一个游戏
+            </Button>
+          )}
         </div>
       ) : (
         <div className={styles.grid}>
