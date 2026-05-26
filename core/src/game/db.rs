@@ -377,4 +377,79 @@ pub mod commands {
 
         Ok(game)
     }
+
+    /// 批量刷新数据库存档路径：遍历所有有 steam_appid 的条目，
+    /// 从 PCGamingWiki 拉取最新 Windows 存档路径，对比差异并追加新路径（不删除旧路径）
+    ///
+    /// 返回变更摘要：每个更新条目的 (游戏名, 新增路径数, 总路径数)
+    #[tauri::command]
+    pub async fn refresh_game_db_save_paths(
+        app: AppHandle,
+    ) -> Result<Vec<(String, usize, usize)>, String> {
+        let mut db = load_db(&app).map_err(|e| e.to_string())?;
+        let mut summary: Vec<(String, usize, usize)> = Vec::new();
+
+        for entry in &mut db.entries {
+            // 仅处理有 steam_appid 的条目
+            let Some(appid) = entry.steam_appid else {
+                continue;
+            };
+
+            // 通过 Steam AppID 精确查询 PCGW 页面名
+            let pcgw_results = match crate::game::pcgw::search_games_by_steam_appid(appid).await {
+                Ok(r) => r,
+                Err(e) => {
+                    log::warn!("[RefreshDB] {} (AppID={}): PCGW 查询失败: {}", entry.name, appid, e);
+                    continue;
+                }
+            };
+
+            if pcgw_results.is_empty() {
+                log::info!("[RefreshDB] {} (AppID={}): PCGW 未找到对应页面", entry.name, appid);
+                continue;
+            }
+
+            // 对每个匹配的 PCGW 页面获取存档路径
+            let mut new_paths_added = 0usize;
+            for result in &pcgw_results {
+                let detail = match crate::game::pcgw::fetch_save_paths(&result.page_name).await {
+                    Ok(d) => d,
+                    Err(e) => {
+                        log::warn!("[RefreshDB] {} → {}: 获取路径失败: {}", entry.name, result.page_name, e);
+                        continue;
+                    }
+                };
+
+                // 将 PCGW 返回的路径展开为模板格式，对比现有路径追加新路径
+                for path in &detail.windows_save_paths {
+                    let normalized = path.replace('\\', "/");
+                    if !entry.save_paths.iter().any(|p| p.replace('\\', "/") == normalized) {
+                        entry.save_paths.push(normalized);
+                        new_paths_added += 1;
+                    }
+                }
+            }
+
+            if new_paths_added > 0 {
+                let total = entry.save_paths.len();
+                log::info!(
+                    "[RefreshDB] {}: 新增 {} 条路径，共 {} 条",
+                    entry.name,
+                    new_paths_added,
+                    total
+                );
+                summary.push((entry.name.clone(), new_paths_added, total));
+            }
+        }
+
+        // 如果有变更则持久化
+        if !summary.is_empty() {
+            save_db(&app, &db).map_err(|e| e.to_string())?;
+            log::info!("[RefreshDB] 刷新完成，{} 个条目有更新", summary.len());
+        } else {
+            log::info!("[RefreshDB] 刷新完成，无变更");
+        }
+
+        Ok(summary)
+    }
 }

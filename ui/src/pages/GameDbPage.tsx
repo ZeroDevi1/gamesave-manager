@@ -54,6 +54,9 @@ import {
   searchPcgwGames,
   fetchPcgwSavePaths,
   searchSteamStore,
+  searchSteamStoreRobust,
+  searchPcgwBySteamAppid,
+  refreshGameDbSavePaths,
   selectAndExtractExeIcon,
   saveCustomLogo,
   getDbGameLogo,
@@ -392,15 +395,15 @@ export default function GameDbPage() {
   const [exportOpen, setExportOpen] = useState(false)
   const [exportJson, setExportJson] = useState('')
 
-  // PCGamingWiki 搜索状态
+
+  // PCGamingWiki 搜索状态（统一搜索 + AppID 桥接）
   const [pcgwOpen, setPcgwOpen] = useState(false)
   const [pcgwQuery, setPcgwQuery] = useState('')
   const [pcgwResults, setPcgwResults] = useState<PcgwSearchResult[]>([])
   const [pcgwLoading, setPcgwLoading] = useState(false)
   const [pcgwSelected, setPcgwSelected] = useState<PcgwGameDetail | null>(null)
-  // Steam 中文搜索
-  const [steamResults, setSteamResults] = useState<{ name: string; id: number }[]>([])
-  const [steamLoading, setSteamLoading] = useState(false)
+  // PCGW 批量刷新状态
+  const [pcgwRefreshLoading, setPcgwRefreshLoading] = useState(false)
 
   const fetchDb = useCallback(async () => {
     setLoading(true)
@@ -631,54 +634,79 @@ export default function GameDbPage() {
     }
   }
 
-  const handleSteamSearch = async () => {
+
+  // 统一搜索：多策略 Steam → AppID 桥接 PCGW → 合并展示结果
+  const handlePcgwSearch = async () => {
     if (!pcgwQuery.trim()) return
-    setSteamLoading(true)
-    setSteamResults([])
-    setPcgwResults([])
-    setPcgwSelected(null)
-    try {
-      const results = await searchSteamStore(pcgwQuery.trim())
-      setSteamResults(results)
-      if (results.length === 0) {
-        addToast('Steam 未找到匹配游戏，尝试直接用当前关键词搜索 PCGamingWiki', 'warning')
-      }
-    } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Steam 搜索失败', 'error')
-    } finally {
-      setSteamLoading(false)
-    }
-  }
-
-  const handleSteamSelect = (name: string) => {
-    setPcgwQuery(name)
-    setSteamResults([])
-    // 自动用选中的英文名搜索 PCGamingWiki
-    handlePcgwSearchWithQuery(name)
-  }
-
-  const handlePcgwSearchWithQuery = async (q: string) => {
     setPcgwLoading(true)
-    setPcgwSelected(null)
     setPcgwResults([])
+    setPcgwSelected(null)
     try {
-      const results = await searchPcgwGames(q)
-      setPcgwResults(results)
-      if (results.length === 0) {
-        addToast('PCGamingWiki 未找到匹配游戏', 'warning')
+      // 1. 多策略 Steam 鲁棒搜索
+      const [steamItems, usedQuery] = await searchSteamStoreRobust(pcgwQuery.trim())
+      
+      if (steamItems.length === 0) {
+        // 回退：直接用名称搜索 PCGW
+        const results = await searchPcgwGames(pcgwQuery.trim())
+        setPcgwResults(results)
+        if (results.length === 0) {
+          addToast('Steam 和 PCGamingWiki 均未找到匹配游戏', 'warning')
+        }
+        return
+      }
+
+      // 2. 并发查询每个 Steam AppID 对应的 PCGW 页面名
+      const merged: PcgwSearchResult[] = []
+      const pcgwPromises = steamItems.slice(0, 8).map(async (item) => {
+        try {
+          const pcgwMatches = await searchPcgwBySteamAppid(item.id)
+          if (pcgwMatches.length > 0) {
+            for (const match of pcgwMatches) {
+              merged.push({
+                page_name: match.page_name,
+                steam_appid: match.steam_appid || item.id,
+              })
+            }
+          } else {
+            // PCGW 未直接匹配 AppID，保留 Steam 结果供手动搜索
+            merged.push({
+              page_name: item.name,
+              steam_appid: item.id,
+            })
+          }
+        } catch {
+          merged.push({
+            page_name: item.name,
+            steam_appid: item.id,
+          })
+        }
+      })
+
+      await Promise.all(pcgwPromises)
+
+      // 去重（按 page_name）
+      const seen = new Set<string>()
+      const uniqueResults = merged.filter((r) => {
+        const key = r.page_name.toLowerCase()
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+
+      setPcgwResults(uniqueResults)
+      
+      if (usedQuery !== pcgwQuery.trim()) {
+        addToast(`Steam 搜索自动缩短为 "${usedQuery}" 并找到 ${uniqueResults.length} 条结果`, 'info')
       }
     } catch (err) {
-      addToast(err instanceof Error ? err.message : '搜索失败', 'error')
+      const msg = err instanceof Error ? err.message : String(err)
+      addToast(`搜索失败: ${msg}`, 'error')
     } finally {
       setPcgwLoading(false)
     }
   }
 
-  const handlePcgwSearch = async () => {
-    if (!pcgwQuery.trim()) return
-    await handlePcgwSearchWithQuery(pcgwQuery.trim())
-  }
-
+  // 点击结果项：获取 PCGW 存档路径详情
   const handlePcgwSelect = async (pageName: string) => {
     setPcgwLoading(true)
     try {
@@ -692,15 +720,29 @@ export default function GameDbPage() {
     }
   }
 
+
   const handlePcgwImport = async () => {
     if (!pcgwSelected) return
+    // 若 PCGW 未含 AppID，尝试通过 Steam 搜索自动补全
+    let steamAppid = pcgwSelected.steam_appid
+    if (steamAppid == null) {
+      try {
+        const [items] = await searchSteamStoreRobust(pcgwSelected.page_name)
+        if (items.length > 0) {
+          steamAppid = items[0].id
+          addToast(`已自动补全 Steam AppID: ${steamAppid}`, 'info')
+        }
+      } catch {
+        // 忽略补全失败，继续导入
+      }
+    }
     const entry: GameDbEntry = {
       id: generateId(pcgwSelected.page_name),
       name: pcgwSelected.page_name,
       aliases: [],
       save_paths: pcgwSelected.windows_save_paths,
       platforms: ['windows'],
-      steam_appid: pcgwSelected.steam_appid,
+      steam_appid: steamAppid,
       notes: pcgwSelected.notes,
       source: 'user',
     }
@@ -711,6 +753,29 @@ export default function GameDbPage() {
       fetchDb()
     } catch (err) {
       addToast(err instanceof Error ? err.message : '导入失败', 'error')
+    }
+  }
+
+  // 从 PCGamingWiki 批量刷新所有条目的存档路径
+  const handleRefreshAll = async () => {
+    setPcgwRefreshLoading(true)
+    try {
+      const summary = await refreshGameDbSavePaths()
+      if (summary.length === 0) {
+        addToast('刷新完成：所有条目均为最新，无变更', 'success')
+      } else {
+        const total = summary.reduce((acc, [, count]) => acc + count, 0)
+        addToast(
+          `刷新完成：${summary.length} 个条目新增 ${total} 条路径`,
+          'success',
+        )
+        fetchDb()
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      addToast(`批量刷新失败: ${msg}`, 'error')
+    } finally {
+      setPcgwRefreshLoading(false)
     }
   }
 
@@ -757,6 +822,13 @@ export default function GameDbPage() {
           </Button>
           <Button icon={<ArrowExport24Regular />} onClick={handleExport}>
             导出
+          </Button>
+          <Button
+            icon={<ArrowClockwise24Regular />}
+            onClick={handleRefreshAll}
+            disabled={pcgwRefreshLoading}
+          >
+            {pcgwRefreshLoading ? '刷新中...' : '刷新全部'}
           </Button>
           <Button
             icon={<Add24Regular />}
@@ -1228,49 +1300,11 @@ export default function GameDbPage() {
                       disabled={pcgwLoading}
                       style={{ flexGrow: 1 }}
                     >
-                      搜索 PCGamingWiki
-                    </Button>
-                    <Button
-                      onClick={handleSteamSearch}
-                      disabled={steamLoading || !pcgwQuery.trim()}
-                      style={{ flexGrow: 1 }}
-                    >
-                      {steamLoading ? '搜索中...' : '通过 Steam 翻译'}
+                      {pcgwLoading ? '搜索中...' : '搜索（支持中文/英文）'}
                     </Button>
                   </div>
-                </div>
 
-                {steamResults.length > 0 && (
-                  <div>
-                    <Label>Steam 搜索结果（点击使用英文名称）</Label>
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '8px',
-                        marginTop: '8px',
-                      }}
-                    >
-                      {steamResults.map((r) => (
-                        <div
-                          key={r.id}
-                          className={styles.resultCard}
-                          onClick={() => handleSteamSelect(r.name)}
-                        >
-                          <div style={{ fontWeight: 600 }}>{r.name}</div>
-                          <div
-                            style={{
-                              fontSize: '12px',
-                              color: tokens.colorNeutralForeground3,
-                            }}
-                          >
-                            Steam AppID: {r.id}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                </div>
 
                 {pcgwLoading && !pcgwSelected && (
                   <Spinner label="搜索中..." />
@@ -1278,7 +1312,7 @@ export default function GameDbPage() {
 
                 {pcgwResults.length > 0 && !pcgwSelected && (
                   <div>
-                    <Label>搜索结果</Label>
+                    <Label>搜索结果（点击查看存档路径）</Label>
                     <div
                       style={{
                         display: 'flex',
@@ -1293,19 +1327,15 @@ export default function GameDbPage() {
                           className={styles.resultCard}
                           onClick={() => handlePcgwSelect(r.page_name)}
                         >
-                          <div style={{ fontWeight: 600 }}>
-                            {r.page_name}
+                          <div style={{ fontWeight: 600 }}>{r.page_name}</div>
+                          <div
+                            style={{
+                              fontSize: '12px',
+                              color: tokens.colorNeutralForeground3,
+                            }}
+                          >
+                            {r.steam_appid ? `Steam AppID: ${r.steam_appid}` : '暂无 AppID'}
                           </div>
-                          {r.steam_appid && (
-                            <div
-                              style={{
-                                fontSize: '12px',
-                                color: tokens.colorNeutralForeground3,
-                              }}
-                            >
-                              Steam AppID: {r.steam_appid}
-                            </div>
-                          )}
                         </div>
                       ))}
                     </div>

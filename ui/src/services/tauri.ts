@@ -148,6 +148,14 @@ export function fetchPcgwSavePaths(pageName: string): Promise<PcgwGameDetail> {
 export function searchSteamStore(query: string): Promise<{ name: string; id: number }[]> {
   return invoke('search_steam_store_cmd', { query })
 }
+export function searchSteamStoreRobust(query: string): Promise<[{ name: string; id: number }[], string]> {
+  return invoke('search_steam_store_robust_cmd', { query })
+}
+export function searchPcgwBySteamAppid(appid: number): Promise<PcgwSearchResult[]> {
+  return invoke('search_pcgw_by_steam_appid', { appid })
+}
+
+// ==================== 游戏数据库 ====================
 // ==================== 游戏数据库 ====================
 
 export interface GameDbEntry {
@@ -196,6 +204,9 @@ export function importGameDb(json: string): Promise<boolean> {
  */
 export function createGameFromDb(dbId: string): Promise<GameConfig> {
   return invoke('create_game_from_db', { dbId })
+}
+export function refreshGameDbSavePaths(): Promise<[string, number, number][]> {
+  return invoke('refresh_game_db_save_paths')
 }
 
 // ==================== 备份 ====================
@@ -283,6 +294,16 @@ export function restoreBackup(gameId: string, backupTimestamp: string): Promise<
  */
 export function getBackupHistory(gameId: string): Promise<BackupManifest[]> {
   return invoke('get_backup_history', { gameId })
+}
+
+/** 检查所有游戏是否有未备份的存档变更，返回 (游戏ID, 变更文件数) 列表 */
+export function checkAllGamesForChanges(): Promise<[string, number][]> {
+  return invoke('check_all_games_for_changes')
+}
+
+/** 一键增量备份所有有变更的游戏，返回 (游戏ID, 成功, 消息) 列表 */
+export function backupAllChangedGames(): Promise<[string, boolean, string][]> {
+  return invoke('backup_all_changed_games')
 }
 
 // ==================== 配置 ====================

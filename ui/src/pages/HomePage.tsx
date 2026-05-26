@@ -15,12 +15,13 @@ import {
   MessageBar,
   MessageBarBody,
 } from '@fluentui/react-components'
-import { Add24Regular, Search24Regular, Games24Regular } from '@fluentui/react-icons'
+import { Add24Regular, Search24Regular, Games24Regular, ArrowSync24Regular } from '@fluentui/react-icons'
 import { useState } from 'react'
 import GameCard from '../components/GameCard'
 import BackupDialog from '../components/BackupDialog'
 import { useGames } from '../hooks/useGames'
-import { useBackup } from '../hooks/useBackup'
+import { useBackup, useChangeDetection } from '../hooks/useBackup'
+
 import { launchGame } from '../services/tauri'
 import { useAppStore } from '../store/appStore'
 
@@ -83,6 +84,7 @@ export default function HomePage() {
   const styles = useStyles()
   const { games, loading, error, add, refresh } = useGames()
   const { addToast } = useAppStore()
+  const change = useChangeDetection()
   const [search, setSearch] = useState('')
   const [addOpen, setAddOpen] = useState(false)
   const [newName, setNewName] = useState('')
@@ -142,12 +144,40 @@ export default function HomePage() {
           />
         </div>
         <Button
+          icon={<ArrowSync24Regular />}
+          onClick={() => change.checkChanges()}
+          disabled={change.checking || change.backingUpAll}
+          appearance="subtle"
+        >
+          {change.checking ? '检查中...' : '检查变更'}
+        </Button>
+        {change.changedGames.length > 0 && (
+          <Button
+            appearance="primary"
+            onClick={() => change.backupAll()}
+            disabled={change.backingUpAll}
+          >
+            {change.backingUpAll
+              ? '备份中...'
+              : `一键备份全部 (${change.changedGames.length})`}
+          </Button>
+        )}
+        <Button
           icon={<Add24Regular />}
           appearance="primary"
           onClick={() => setAddOpen(true)}
         >
           添加游戏
         </Button>
+
+      {change.changedGames.length > 0 && (
+        <MessageBar intent="warning" style={{ flexShrink: 0 }}>
+          <MessageBarBody>
+            {change.changedGames.length} 个游戏共有{' '}
+            {change.changedGames.reduce((s, [, c]) => s + c, 0)} 个未备份的存档变更
+          </MessageBarBody>
+        </MessageBar>
+      )}
       </div>
 
       {error && (

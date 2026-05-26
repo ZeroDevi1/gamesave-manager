@@ -245,6 +245,146 @@ pub async fn search_games(query: &str) -> anyhow::Result<Vec<PcgwSearchResult>> 
     Ok(results)
 }
 
+// ==================== AppID 精确查 PCGW ====================
+
+/// 通过 Steam AppID 精确查询 PCGamingWiki 页面名
+/// 使用 Cargo API `WHERE Steam_AppID = {appid}` 精确匹配
+/// 返回对应的 PCGW 搜索结果列表（通常最多一条）
+pub async fn search_games_by_steam_appid(appid: u64) -> anyhow::Result<Vec<PcgwSearchResult>> {
+    let client = http_client();
+    // Cargo API：按 Steam_AppID 精确查询
+    let url = format!(
+        "{}?action=cargoquery&tables=Infobox_game&fields=Infobox_game._pageName=Page,Infobox_game.Steam_AppID&where=Infobox_game.Steam_AppID%20=%20{}&limit=5&format=json&origin=*",
+        PCGW_API_BASE,
+        appid
+    );
+
+    log::info!("[PCGW] 按 AppID 查询: url={}", url);
+
+    let resp = client
+        .get(&url)
+        .header("User-Agent", USER_AGENT)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("请求 PCGamingWiki Cargo API (AppID) 失败: {}", e))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(anyhow::anyhow!(
+            "PCGamingWiki Cargo API (AppID) 返回 HTTP {}: {}",
+            status,
+            body
+        ));
+    }
+
+    let json: serde_json::Value = resp.json().await.map_err(|e| {
+        anyhow::anyhow!("解析 PCGamingWiki Cargo (AppID) 响应失败: {}", e)
+    })?;
+
+    let mut results = Vec::new();
+    if let Some(rows) = json.get("cargoquery").and_then(|v| v.as_array()) {
+        for row in rows {
+            if let Some(title) = row.get("title") {
+                let page_name = title
+                    .get("Page")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let steam_appid = title
+                    .get("Steam AppID")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.split(',').next())
+                    .and_then(|s| s.trim().parse::<u64>().ok());
+
+                if !page_name.is_empty() {
+                    results.push(PcgwSearchResult {
+                        page_name,
+                        steam_appid,
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+// ==================== 多策略 Steam 搜索 ====================
+
+/// 多策略鲁棒搜索 Steam 商店
+/// 
+/// 核心思路：Steam storesearch 对中文极度敏感，完整中文名可能搜不出结果。
+/// 本函数采用渐进式退化策略：
+/// 1. 先用完整查询 → 无结果则逐字缩短重试（从末尾删除）
+/// 2. 每轮缩短后检查，找到结果即返回
+/// 3. 仍无结果则尝试去标点、仅保留中文字符再搜
+/// 
+/// 返回 (搜索到的条目列表, 实际使用的查询字符串)
+pub async fn search_steam_store_robust(query: &str) -> anyhow::Result<(Vec<SteamStoreItem>, String)> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return Ok((Vec::new(), String::new()));
+    }
+
+    // 策略1：逐步缩短查询，从末尾删字符直到找到结果
+    let mut current = trimmed.to_string();
+    while current.len() >= 2 {
+        let results = search_steam_store(&current).await?;
+        if !results.is_empty() {
+            log::info!(
+                "[Steam鲁棒] 查询 '{}' → 缩短到 '{}' 得到 {} 条结果",
+                trimmed,
+                current,
+                results.len()
+            );
+            return Ok((results, current));
+        }
+        // 去掉末尾字符继续尝试
+        let chars: Vec<char> = current.chars().collect();
+        if chars.len() <= 2 {
+            break;
+        }
+        current = chars[..chars.len() - 1].iter().collect();
+    }
+
+    // 策略2：去标点，仅保留中文+字母+数字，再试
+    let cleaned: String = trimmed
+        .chars()
+        .filter(|c| c.is_alphanumeric() || (*c as u32) >= 0x4e00 && (*c as u32) <= 0x9fa5)
+        .collect();
+    if cleaned.len() >= 2 && cleaned != trimmed {
+        let results = search_steam_store(&cleaned).await?;
+        if !results.is_empty() {
+            log::info!(
+                "[Steam鲁棒] 去标点后查询 '{}' 得到 {} 条结果",
+                cleaned,
+                results.len()
+            );
+            return Ok((results, cleaned));
+        }
+    }
+
+    // 策略3：仅用纯中文字符再试（如果有的话）
+    let chinese_only: String = trimmed
+        .chars()
+        .filter(|c| (*c as u32) >= 0x4e00 && (*c as u32) <= 0x9fa5)
+        .collect();
+    if chinese_only.len() >= 2 && chinese_only != trimmed && chinese_only != cleaned {
+        let results = search_steam_store(&chinese_only).await?;
+        if !results.is_empty() {
+            log::info!(
+                "[Steam鲁棒] 仅用中文 '{}' 得到 {} 条结果",
+                chinese_only,
+                results.len()
+            );
+            return Ok((results, chinese_only));
+        }
+    }
+
+    Ok((Vec::new(), String::new()))
+}
+
 // ==================== Parse API 获取存档路径 ====================
 
 /// 通过 Parse API 获取页面 wikitext，提取 Windows 存档路径
@@ -503,5 +643,18 @@ pub mod commands {
     #[tauri::command]
     pub async fn search_steam_store_cmd(query: String) -> Result<Vec<SteamStoreItem>, String> {
         super::search_steam_store(&query).await.map_err(|e| e.to_string())
+    }
+
+    /// 通过 Steam AppID 精确查询 PCGamingWiki 游戏页面
+    #[tauri::command]
+    pub async fn search_pcgw_by_steam_appid(appid: u64) -> Result<Vec<PcgwSearchResult>, String> {
+        search_games_by_steam_appid(appid).await.map_err(|e| e.to_string())
+    }
+
+    /// 多策略鲁棒搜索 Steam 商店（逐步缩短 + 去标点回退）
+    /// 返回搜索结果和实际使用的查询字符串
+    #[tauri::command]
+    pub async fn search_steam_store_robust_cmd(query: String) -> Result<(Vec<SteamStoreItem>, String), String> {
+        super::search_steam_store_robust(&query).await.map_err(|e| e.to_string())
     }
 }

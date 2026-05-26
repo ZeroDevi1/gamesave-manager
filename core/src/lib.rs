@@ -62,10 +62,13 @@ pub fn run() {
             game::db_commands::export_game_db,
             game::db_commands::import_game_db,
             game::db_commands::create_game_from_db,
+            game::db_commands::refresh_game_db_save_paths,
             // PCGamingWiki 相关命令
             game::pcgw_commands::search_pcgw_games,
             game::pcgw_commands::fetch_pcgw_save_paths,
             game::pcgw_commands::search_steam_store_cmd,
+            game::pcgw_commands::search_pcgw_by_steam_appid,
+            game::pcgw_commands::search_steam_store_robust_cmd,
             // 备份相关命令
             backup::commands::backup_full,
             backup::commands::backup_incremental,
@@ -73,6 +76,8 @@ pub fn run() {
             backup::commands::get_backup_history,
             backup::commands::list_remote_backups,
             backup::commands::restore_remote_backup,
+            backup::commands::check_all_games_for_changes,
+            backup::commands::backup_all_changed_games,
             // 配置相关命令
             config::commands::load_config,
             config::commands::save_config,
