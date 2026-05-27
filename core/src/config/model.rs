@@ -177,6 +177,15 @@ pub struct GameConfig {
     pub last_backup: Option<String>,
     pub logo_path: Option<String>,
     pub steam_appid: Option<u64>,
+    /// 游戏主 exe 文件名（用于进程监控，如 "eldenring.exe"），从游戏数据库自动填充或用户手动设置
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exe_name: Option<String>,
+    /// 是否启用该游戏的自动备份（进程退出后自动触发增量备份），None 时跟随全局设置
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_backup_enabled: Option<bool>,
+    /// 是否在自动同步/备份前要求手动确认，None 时跟随全局 require_confirmation 设置
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub confirm_before_sync: Option<bool>,
 }
 
 /// 全局设置
@@ -185,6 +194,11 @@ pub struct GameConfig {
 pub struct Settings {
     pub theme: String, // "system" | "light" | "dark"
     pub steamgriddb_api_key: Option<String>,
+    /// 全局自动备份总开关（关闭后所有游戏都不在进程退出时自动备份）
+    pub auto_backup: bool,
+    /// 全局手动确认开关（true = 自动同步/备份前弹窗确认；false = 全自动执行）
+    /// 测试期建议开启，验证稳定后关闭
+    pub require_confirmation: bool,
 }
 
 impl Default for Settings {
@@ -192,6 +206,8 @@ impl Default for Settings {
         Self {
             theme: "system".to_string(),
             steamgriddb_api_key: None,
+            auto_backup: true,
+            require_confirmation: true,
         }
     }
 }

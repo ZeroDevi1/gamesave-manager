@@ -54,6 +54,8 @@ pub fn run() {
             game::commands::save_custom_logo,
             game::commands::get_db_game_logo,
             game::commands::launch_game,
+            game::commands::launch_game_with_sync,
+            game::commands::update_game_settings,
             // 游戏数据库相关命令
             game::db_commands::get_game_db,
             game::db_commands::search_game_db,

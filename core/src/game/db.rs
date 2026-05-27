@@ -369,6 +369,10 @@ pub mod commands {
             last_backup: None,
             logo_path,
             steam_appid: entry.steam_appid,
+            // 从游戏数据库别名自动填充 exe 文件名（第一个别名通常为主 exe）
+            exe_name: entry.aliases.first().cloned(),
+            auto_backup_enabled: Some(true),
+            confirm_before_sync: None, // 跟随全局 require_confirmation 设置
         };
 
         let mut config = crate::config::load_config(&app).map_err(|e| e.to_string())?;

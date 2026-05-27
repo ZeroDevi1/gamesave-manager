@@ -127,6 +127,20 @@ pub async fn perform_incremental_backup(
     };
     super::manifest::save_manifest(app, &manifest)?;
 
+    // 备份成功后自动上传远端 manifest（供后续启动前同步比对）
+    if changed_count > 0 {
+        if let Err(e) = super::remote_manifest::upload_remote_manifest(
+            app,
+            game_id,
+            manifest.files.clone(),
+            timestamp,
+        )
+        .await
+        {
+            log::warn!("[增量备份] 远端清单上传失败（不影响备份本身）: {}", e);
+        }
+    }
+
     Ok(BackupResult {
         success: true,
         message: format!("增量备份完成，上传 {} 个变更文件", changed_count),

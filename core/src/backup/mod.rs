@@ -2,7 +2,9 @@
 pub mod full;
 pub mod incremental;
 pub mod manifest;
+pub mod remote_manifest;
 pub mod restore;
+pub mod sync;
 
 use serde::{Deserialize, Serialize};
 
