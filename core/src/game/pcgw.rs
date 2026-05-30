@@ -589,7 +589,6 @@ fn extract_path_from_saves_line(line: &str) -> Option<String> {
 /// 转换 PCGamingWiki 路径占位符
 fn convert_pcgw_placeholders(text: &str) -> String {
     let mut result = text.to_string();
-
     let replacements = [
         (r"(?i)\{\{\s*p\s*\|\s*appdata\s*\}\}", "%APPDATA%"),
         (r"(?i)\{\{\s*p\s*\|\s*localappdata\s*\}\}", "%LOCALAPPDATA%"),
@@ -599,16 +598,17 @@ fn convert_pcgw_placeholders(text: &str) -> String {
         (r"(?i)\{\{\s*p\s*\|\s*programfiles\s*\}\}", "%PROGRAMFILES%"),
         (r"(?i)\{\{\s*p\s*\|\s*public\s*\}\}", "%PUBLIC%"),
         (r"(?i)\{\{\s*p\s*\|\s*steam\s*\}\}", "%STEAMPATH%"),
-        (r"(?i)\{\{\s*p\s*\|\s*uid\s*\}\}", "{USER_ID}"),
+        // Uplay 存档路径：Ubisoft Connect 默认安装在 Program Files (x86) 下
+        (r"(?i)\{\{\s*p\s*\|\s*uplay\s*\}\}", "%PROGRAMFILES(X86)%/Ubisoft Game Launcher"),
+        // UID 为动态数字，替换为 * 通配符以利用 glob 匹配
+        (r"(?i)\{\{\s*p\s*\|\s*uid\s*\}\}", "*"),
         (r"(?i)\{\{\s*p\s*\|\s*game\s*\}\}", "<path-to-game>"),
     ];
-
     for (pattern, to) in &replacements {
         if let Ok(re) = regex::Regex::new(pattern) {
             result = re.replace_all(&result, *to).to_string();
         }
     }
-
     // 统一使用正斜杠
     result.replace('\\', "/")
 }

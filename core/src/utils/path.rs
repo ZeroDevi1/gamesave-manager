@@ -1,9 +1,7 @@
 // utils/path.rs - 跨平台路径处理（目前仅 Windows）
-
 /// 展开 Windows 环境变量（如 %APPDATA%）
 pub fn expand_env(path: &str) -> String {
     let mut result = path.to_string();
-
     // 展开常见环境变量
     for (var, fallback) in [
         ("%APPDATA%", dirs::data_dir()),
@@ -17,7 +15,17 @@ pub fn expand_env(path: &str) -> String {
             }
         }
     }
-
+    // 展开 Program Files 系列环境变量
+    if result.contains("%PROGRAMFILES%") {
+        if let Ok(pf) = std::env::var("ProgramFiles") {
+            result = result.replace("%PROGRAMFILES%", &pf);
+        }
+    }
+    if result.contains("%PROGRAMFILES(X86)%") {
+        if let Ok(pf86) = std::env::var("ProgramFiles(x86)") {
+            result = result.replace("%PROGRAMFILES(X86)%", &pf86);
+        }
+    }
     // 处理 %APPDATA%/../LocalLow 这类路径
     let path_buf = std::path::PathBuf::from(&result);
     if let Ok(cleaned) = path_buf.canonicalize() {
