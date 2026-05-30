@@ -668,11 +668,27 @@ export default function GameDbPage() {
               })
             }
           } else {
-            // PCGW 未直接匹配 AppID，保留 Steam 结果供手动搜索
-            merged.push({
-              page_name: item.name,
-              steam_appid: item.id,
-            })
+            // PCGW 未直接匹配 AppID，尝试用 Steam 商品名搜索 PCGW Cargo API
+            // 以获取真正的 PCGW 页面名（避免 DLC 名称直接作为页面名导致 missingtitle）
+            try {
+              const fallbackResults = await searchPcgwGames(item.name)
+              if (fallbackResults.length > 0) {
+                merged.push({
+                  page_name: fallbackResults[0].page_name,
+                  steam_appid: item.id,
+                })
+              } else {
+                merged.push({
+                  page_name: item.name,
+                  steam_appid: item.id,
+                })
+              }
+            } catch {
+              merged.push({
+                page_name: item.name,
+                steam_appid: item.id,
+              })
+            }
           }
         } catch {
           merged.push({

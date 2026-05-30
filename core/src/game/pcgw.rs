@@ -389,89 +389,139 @@ pub async fn search_steam_store_robust(query: &str) -> anyhow::Result<(Vec<Steam
 
 /// 通过 Parse API 获取页面 wikitext，提取 Windows 存档路径
 pub async fn fetch_save_paths(page_name: &str) -> anyhow::Result<PcgwGameDetail> {
-    let client = http_client();
-    let url = format!(
-        "{}?action=parse&page={}&prop=wikitext&format=json&origin=*",
-        PCGW_API_BASE,
-        urlencoding::encode(page_name)
-    );
-
-    log::info!("[PCGW] 获取存档路径: page_name={}, url={}", page_name, url);
-
-    let resp = client
-        .get(&url)
-        .header("User-Agent", USER_AGENT)
-        .send()
-        .await
-        .map_err(|e| anyhow::anyhow!("请求 PCGamingWiki Parse API 失败: {}", e))?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        return Err(anyhow::anyhow!(
-            "PCGamingWiki Parse API 返回 HTTP {}: {}",
-            status,
-            body
-        ));
-    }
-
-    let body_text = resp.text().await.map_err(|e| {
-        anyhow::anyhow!("读取 PCGamingWiki Parse 响应体失败: {}", e)
-    })?;
-
-    log::debug!("[PCGW] Parse 响应原始文本长度: {}", body_text.len());
-
-    let json: serde_json::Value = serde_json::from_str(&body_text).map_err(|e| {
-        anyhow::anyhow!(
-            "解析 PCGamingWiki Parse JSON 失败: {} | 原始文本前 500 字: {}",
-            e,
-            &body_text[..body_text.len().min(500)]
-        )
-    })?;
-
-    // 检查 API 错误
-    if let Some(error) = json.get("error") {
-        let code = error.get("code").and_then(|v| v.as_str()).unwrap_or("unknown");
-        let info = error.get("info").and_then(|v| v.as_str()).unwrap_or("");
-        return Err(anyhow::anyhow!(
-            "PCGamingWiki API 错误 [{}]: {}",
-            code,
-            info
-        ));
-    }
-
-    let wikitext = json
-        .get("parse")
-        .and_then(|p| p.get("wikitext"))
-        .and_then(|w| w.get("*"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-
-    if wikitext.is_empty() {
-        return Err(anyhow::anyhow!(
-            "PCGamingWiki 返回了空 wikitext，页面 '{}' 可能不存在",
-            page_name
-        ));
-    }
-
-    let (paths, notes) = parse_windows_save_paths(wikitext);
-    let steam_appid = extract_steam_appid_from_wikitext(wikitext);
-
-    log::info!(
-        "[PCGW] 解析完成: page='{}', paths={:?}, appid={:?}",
-        page_name,
-        paths,
-        steam_appid
-    );
-
-    Ok(PcgwGameDetail {
-        page_name: page_name.to_string(),
-        steam_appid,
-        windows_save_paths: paths,
-        notes,
+    fetch_save_paths_inner(page_name, true).await
+}
+/// 内部实现：支持 missingtitle 容错重试
+///
+/// # 参数
+/// - `page_name`: PCGW 页面名
+/// - `allow_fallback`: 是否允许在 missingtitle 时通过 Cargo API 搜索并重新获取
+fn fetch_save_paths_inner<'a>(
+    page_name: &'a str,
+    allow_fallback: bool,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<PcgwGameDetail>> + Send + 'a>> {
+    Box::pin(async move {
+        // 清理 Steam 商店名称中常见的商标符号，PCGW 页面名不含这些字符
+        let clean_name = page_name.replace('®', "").replace('™', "");
+        let query_name = if clean_name.is_empty() { page_name } else { &clean_name };
+        let client = http_client();
+        let url = format!(
+            "{}?action=parse&page={}&prop=wikitext&format=json&origin=*",
+            PCGW_API_BASE,
+            urlencoding::encode(query_name)
+        );
+        log::info!("[PCGW] 获取存档路径: page_name={}, url={}", query_name, url);
+        let resp = client
+            .get(&url)
+            .header("User-Agent", USER_AGENT)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("请求 PCGamingWiki Parse API 失败: {}", e))?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(anyhow::anyhow!(
+                "PCGamingWiki Parse API 返回 HTTP {}: {}",
+                status,
+                body
+            ));
+        }
+        let body_text = resp.text().await.map_err(|e| {
+            anyhow::anyhow!("读取 PCGamingWiki Parse 响应体失败: {}", e)
+        })?;
+        log::debug!("[PCGW] Parse 响应原始文本长度: {}", body_text.len());
+        let json: serde_json::Value = serde_json::from_str(&body_text).map_err(|e| {
+            anyhow::anyhow!(
+                "解析 PCGamingWiki Parse JSON 失败: {} | 原始文本前 500 字: {}",
+                e,
+                &body_text[..body_text.len().min(500)]
+            )
+        })?;
+        // 检查 API 错误
+        if let Some(error) = json.get("error") {
+            let code = error.get("code").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let info = error.get("info").and_then(|v| v.as_str()).unwrap_or("");
+            // 若页面不存在且允许回退，尝试通过 Cargo API 搜索最匹配的页面名
+            if allow_fallback && code == "missingtitle" {
+                log::info!(
+                    "[PCGW] 页面 '{}' 不存在，尝试 Cargo API 回退搜索...",
+                    query_name
+                );
+                return try_fetch_via_cargo_fallback(query_name).await;
+            }
+            return Err(anyhow::anyhow!(
+                "PCGamingWiki API 错误 [{}]: {}",
+                code,
+                info
+            ));
+        }
+        let wikitext = json
+            .get("parse")
+            .and_then(|p| p.get("wikitext"))
+            .and_then(|w| w.get("*"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if wikitext.is_empty() {
+            return Err(anyhow::anyhow!(
+                "PCGamingWiki 返回了空 wikitext，页面 '{}' 可能不存在",
+                query_name
+            ));
+        }
+        let (paths, notes) = parse_windows_save_paths(wikitext);
+        let steam_appid = extract_steam_appid_from_wikitext(wikitext);
+        log::info!(
+            "[PCGW] 解析完成: page='{}', paths={:?}, appid={:?}",
+            query_name,
+            paths,
+            steam_appid
+        );
+        Ok(PcgwGameDetail {
+            page_name: query_name.to_string(),
+            steam_appid,
+            windows_save_paths: paths,
+            notes,
+        })
     })
 }
-
+/// Cargo API 回退搜索：当 Parse API 返回 missingtitle 时，
+/// 用页面名搜索 Cargo API，取第一条结果的 page_name 重新获取存档路径
+fn try_fetch_via_cargo_fallback<'a>(
+    page_name: &'a str,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<PcgwGameDetail>> + Send + 'a>> {
+    Box::pin(async move {
+        // 搜索前先清理商标符号，确保 Cargo 搜索不受®™干扰
+        let clean_query = page_name.replace('®', "").replace('™', "");
+        let search_term = if clean_query.is_empty() { page_name } else { &clean_query };
+        let candidates = search_games(search_term).await.map_err(|e| {
+            anyhow::anyhow!(
+                "PCGamingWiki 页面 '{}' 不存在，且 Cargo 回退搜索也失败: {}",
+                page_name,
+                e
+            )
+        })?;
+        if candidates.is_empty() {
+            return Err(anyhow::anyhow!(
+                "PCGamingWiki 页面 '{}' 不存在，Cargo 回退搜索也未找到匹配游戏",
+                page_name
+            ));
+        }
+        let fallback_name = &candidates[0].page_name;
+        log::info!(
+            "[PCGW] Cargo 回退搜索命中: '{}' → '{}'，重新获取存档路径...",
+            page_name,
+            fallback_name
+        );
+        // 递归调用但关闭再次回退，防止无限循环
+        fetch_save_paths_inner(fallback_name, false).await.map_err(|e| {
+            anyhow::anyhow!(
+                "PCGamingWiki 页面 '{}' 不存在，回退到 '{}' 后仍然失败: {}",
+                page_name,
+                fallback_name,
+                e
+            )
+        })
+    })
+}
 /// 解析 wikitext 中的 Windows 存档路径
 fn parse_windows_save_paths(wikitext: &str) -> (Vec<String>, Option<String>) {
     let mut paths = Vec::new();
