@@ -73,11 +73,14 @@ pub async fn upload_remote_manifest(
             base.trim_end_matches('/').to_string()
         });
     let _ = backend.mkdir(&remote_parent).await;
-
+    // 某些网盘（如百度网盘）上传同名文件时不覆盖而是生成带编号副本，
+    // 因此先尝试删除已有 manifest.json，确保远端始终只有一个最新版本
+    if let Err(e) = backend.delete(&remote_path).await {
+        log::debug!("[远端清单] 删除旧 manifest 失败（可能不存在）: {}", e);
+    }
     backend
         .upload_file(temp_path.to_str().unwrap(), &remote_path)
         .await?;
-
     // 清理临时文件
     let _ = std::fs::remove_file(&temp_path);
 
