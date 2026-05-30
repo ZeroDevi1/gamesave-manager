@@ -354,8 +354,8 @@ export type StorageConfig =
 export interface Settings {
   theme: string
   steamgriddb_api_key?: string
+  backup_retention_limit?: number
 }
-
 export interface AppConfig {
   storage?: StorageConfig
   games: GameConfig[]

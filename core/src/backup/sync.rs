@@ -46,49 +46,43 @@ fn scan_local_saves(
     let mut local_files: HashMap<String, FileEntry> = HashMap::new();
 
     for save_path_str in &game.save_paths {
-        let save_path = Path::new(save_path_str);
-        if !save_path.exists() {
-            continue;
-        }
-
-        let entries: Vec<_> = if save_path.is_file() {
-            vec![save_path.to_path_buf()]
-        } else {
-            WalkDir::new(save_path)
-                .into_iter()
-                .filter_map(|e| e.ok())
-                .filter(|e| e.file_type().is_file())
-                .map(|e| e.path().to_path_buf())
-                .collect()
-        };
-
-        for path in &entries {
-            let rel_path = if save_path.is_file() {
-                save_path
-                    .file_name()
-                    .unwrap()
-                    .to_string_lossy()
-                    .to_string()
+        for save_path in crate::utils::path::resolve_save_paths(save_path_str) {
+            let entries: Vec<_> = if save_path.is_file() {
+                vec![save_path.to_path_buf()]
             } else {
-                path.strip_prefix(save_path)?
-                    .to_string_lossy()
-                    .replace('\\', "/")
+                WalkDir::new(&save_path)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.file_type().is_file())
+                    .map(|e| e.path().to_path_buf())
+                    .collect()
             };
-
-            let meta = path.metadata()?;
-            let modified_time: DateTime<Utc> = meta.modified()?.into();
-            let content = std::fs::read(path)?;
-            let sha256 = hash::sha256_string(&content);
-
-            local_files.insert(
-                rel_path.clone(),
-                FileEntry {
-                    relative_path: rel_path,
-                    size: meta.len(),
-                    modified_time,
-                    sha256,
-                },
-            );
+            for path in &entries {
+                let rel_path = if save_path.is_file() {
+                    save_path
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string()
+                } else {
+                    path.strip_prefix(&save_path)?
+                        .to_string_lossy()
+                        .replace('\\', "/")
+                };
+                let meta = path.metadata()?;
+                let modified_time: DateTime<Utc> = meta.modified()?.into();
+                let content = std::fs::read(path)?;
+                let sha256 = hash::sha256_string(&content);
+                local_files.insert(
+                    rel_path.clone(),
+                    FileEntry {
+                        relative_path: rel_path,
+                        size: meta.len(),
+                        modified_time,
+                        sha256,
+                    },
+                );
+            }
         }
     }
 

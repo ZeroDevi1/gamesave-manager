@@ -199,8 +199,10 @@ pub struct Settings {
     /// 全局手动确认开关（true = 自动同步/备份前弹窗确认；false = 全自动执行）
     /// 测试期建议开启，验证稳定后关闭
     pub require_confirmation: bool,
+    /// 远程全量备份保留数量上限，None 表示不限制
+    /// 超过上限时自动删除最旧的全量备份 ZIP，防止远程存储无限膨胀
+    pub backup_retention_limit: Option<u32>,
 }
-
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -208,6 +210,7 @@ impl Default for Settings {
             steamgriddb_api_key: None,
             auto_backup: true,
             require_confirmation: true,
+            backup_retention_limit: None,
         }
     }
 }

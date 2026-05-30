@@ -54,3 +54,9 @@ pub struct ListDirRequest {
 pub struct MkdirRequest {
     pub path: String,
 }
+/// 删除文件/目录请求体
+#[derive(Debug, Serialize)]
+pub struct RemoveRequest {
+    pub dir: String,
+    pub names: Vec<String>,
+}

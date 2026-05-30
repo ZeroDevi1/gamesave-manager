@@ -33,80 +33,68 @@ pub async fn perform_incremental_backup(
     let mut changed_count = 0usize;
 
     // 扫描当前存档目录
+    // 扫描当前存档目录
     for save_path_str in &game.save_paths {
-        let save_path = Path::new(save_path_str);
-        if !save_path.exists() {
-            continue;
-        }
-
-        let entries: Vec<_> = if save_path.is_file() {
-            vec![save_path.to_path_buf()]
-        } else {
-            WalkDir::new(save_path)
-                .into_iter()
-                .filter_map(|e| e.ok())
-                .filter(|e| e.file_type().is_file())
-                .map(|e| e.path().to_path_buf())
-                .collect()
-        };
-
-        for path in &entries {
-            let rel_path = if save_path.is_file() {
-                save_path.file_name().unwrap().to_string_lossy().to_string()
+        for save_path in crate::utils::path::resolve_save_paths(save_path_str) {
+            let entries: Vec<_> = if save_path.is_file() {
+                vec![save_path.to_path_buf()]
             } else {
-                path.strip_prefix(save_path)?
-                    .to_string_lossy()
-                    .replace('\\', "/")
+                WalkDir::new(&save_path)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.file_type().is_file())
+                    .map(|e| e.path().to_path_buf())
+                    .collect()
             };
-
-            let meta = path.metadata()?;
-            let modified_time: chrono::DateTime<Utc> = meta.modified()?.into();
-            let content = std::fs::read(path)?;
-            let sha256 = hash::sha256_string(&content);
-
-            let need_upload = match last_files.get(&rel_path) {
-                Some(last) => {
-                    // 双重校验：先比对时间戳，时间戳相同再比对 SHA256
-                    last.modified_time != modified_time || last.sha256 != sha256
+            for path in &entries {
+                let rel_path = if save_path.is_file() {
+                    save_path.file_name().unwrap().to_string_lossy().to_string()
+                } else {
+                    path.strip_prefix(&save_path)?
+                        .to_string_lossy()
+                        .replace('\\', "/")
+                };
+                let meta = path.metadata()?;
+                let modified_time: chrono::DateTime<Utc> = meta.modified()?.into();
+                let content = std::fs::read(path)?;
+                let sha256 = hash::sha256_string(&content);
+                let need_upload = match last_files.get(&rel_path) {
+                    Some(last) => {
+                        // 双重校验：先比对时间戳，时间戳相同再比对 SHA256
+                        last.modified_time != modified_time || last.sha256 != sha256
+                    }
+                    None => true, // 新增文件
+                };
+                if need_upload {
+                    changed_count += 1;
+                    // 上传到 Alist（引入动态路由拼接，无缝支持自定义备份根路径）
+                    let base_remote_path = config.get_game_remote_path(game);
+                    let remote_dir = format!(
+                        "{}/incremental/{}/",
+                        base_remote_path.trim_end_matches('/'),
+                        ts_str
+                    );
+                    let remote_path = format!("{}{}", remote_dir, rel_path);
+                    // 通过存储适配器工厂动态获取激活的物理云端后端实例
+                    let backend = crate::storage::get_storage_backend(&config)?;
+                    // 确保远程层级目录已物理创建（忽略文件夹早已存在的静默成功）
+                    let remote_parent = Path::new(&remote_path)
+                        .parent()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_else(|| remote_dir.clone());
+                    let _ = backend.mkdir(&remote_parent).await;
+                    // 调用统一的 Trait 抽象方法上传增量变更物理文件
+                    backend.upload_file(path.to_str().unwrap(), &remote_path).await?;
                 }
-                None => true, // 新增文件
-            };
-
-            if need_upload {
-                changed_count += 1;
-
-                // 上传到 Alist（引入动态路由拼接，无缝支持自定义备份根路径）
-                let base_remote_path = config.get_game_remote_path(game);
-                let remote_dir = format!(
-                    "{}/incremental/{}/",
-                    base_remote_path.trim_end_matches('/'),
-                    ts_str
-                );
-                let remote_path = format!("{}{}", remote_dir, rel_path);
-
-                // 通过存储适配器工厂动态获取激活的物理云端后端实例
-                let backend = crate::storage::get_storage_backend(&config)?;
-
-                // 确保远程层级目录已物理创建（忽略文件夹早已存在的静默成功）
-                let remote_parent = Path::new(&remote_path)
-                    .parent()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|| remote_dir.clone());
-                let _ = backend.mkdir(&remote_parent).await;
-
-                // 调用统一的 Trait 抽象方法上传增量变更物理文件
-                backend.upload_file(path.to_str().unwrap(), &remote_path).await?;
+                new_files.push(FileEntry {
+                    relative_path: rel_path.clone(),
+                    size: meta.len(),
+                    modified_time,
+                    sha256,
+                });
+                // 从旧清单中移除，最后剩下的就是已删除文件
+                last_files.remove(&rel_path);
             }
-
-            new_files.push(FileEntry {
-                relative_path: rel_path.clone(),
-                size: meta.len(),
-                modified_time,
-                sha256,
-            });
-
-            // 从旧清单中移除，最后剩下的就是已删除文件
-            last_files.remove(&rel_path);
         }
     }
 
@@ -139,8 +127,10 @@ pub async fn perform_incremental_backup(
         {
             log::warn!("[增量备份] 远端清单上传失败（不影响备份本身）: {}", e);
         }
+        // 根据设置清理旧的全量/增量远程备份
+        let backend = crate::storage::get_storage_backend(&config)?;
+        super::cleanup_old_backups(app, game, &config, &backend).await;
     }
-
     Ok(BackupResult {
         success: true,
         message: format!("增量备份完成，上传 {} 个变更文件", changed_count),

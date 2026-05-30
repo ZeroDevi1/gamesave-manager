@@ -7,8 +7,7 @@ pub mod restore;
 pub mod sync;
 
 use serde::{Deserialize, Serialize};
-
-/// 备份类型
+use tauri::{AppHandle, Manager};
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BackupType {
@@ -41,6 +40,83 @@ pub struct RemoteBackupEntry {
     pub modified: Option<String>,
 }
 
+/// 根据全局设置清理旧的全量/增量远程备份，防止云端存储无限膨胀
+///
+/// # 参数
+/// * `app` - Tauri 应用句柄
+/// * `game` - 游戏配置
+/// * `config` - 应用配置（含 settings.backup_retention_limit）
+/// * `backend` - 已初始化的云端存储后端
+async fn cleanup_old_backups(
+    app: &AppHandle,
+    game: &crate::config::model::GameConfig,
+    config: &crate::config::model::AppConfig,
+    backend: &crate::storage::StorageBackend,
+) {
+    let limit = match config.settings.backup_retention_limit {
+        Some(n) if n > 0 => n as usize,
+        _ => return,
+    };
+    let base_remote_path = config.get_game_remote_path(game);
+    // 1. 清理全量备份 ZIP
+    let full_dir = format!("{}/full/", base_remote_path.trim_end_matches('/'));
+    if let Ok(entries) = backend.list_dir(&full_dir).await {
+        let mut zips: Vec<_> = entries
+            .into_iter()
+            .filter(|e| !e.is_dir && e.name.ends_with(".zip"))
+            .collect();
+        zips.sort_by(|a, b| b.modified.cmp(&a.modified));
+        if zips.len() > limit {
+            for old in &zips[limit..] {
+                if let Err(e) = backend.delete(&old.path).await {
+                    log::warn!("[清理旧备份] 删除全量备份失败 {}: {}", old.path, e);
+                } else {
+                    log::info!("[清理旧备份] 已删除旧全量备份: {}", old.path);
+                }
+            }
+        }
+    }
+    // 2. 清理增量备份目录
+    let inc_dir = format!("{}/incremental/", base_remote_path.trim_end_matches('/'));
+    if let Ok(entries) = backend.list_dir(&inc_dir).await {
+        let mut dirs: Vec<_> = entries.into_iter().filter(|e| e.is_dir).collect();
+        // 增量目录名即时间戳，按名称降序等同于按时间降序
+        dirs.sort_by(|a, b| b.name.cmp(&a.name));
+        if dirs.len() > limit {
+            for old in &dirs[limit..] {
+                let dir_path = format!("{}{}/", inc_dir.trim_end_matches('/'), old.path.trim_start_matches('/'));
+                if let Err(e) = backend.delete(&dir_path).await {
+                    log::warn!("[清理旧备份] 删除增量目录失败 {}: {}", dir_path, e);
+                } else {
+                    log::info!("[清理旧备份] 已删除旧增量目录: {}", dir_path);
+                }
+            }
+        }
+    }
+    // 3. 同步清理本地 manifest 中已不存在的旧记录
+    if let Ok(manifests) = manifest::load_manifests(app, &game.id) {
+        let keep_count = limit.max(1);
+        if manifests.len() > keep_count {
+            let mut sorted = manifests;
+            sorted.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+            let pruned: Vec<_> = sorted.into_iter().take(keep_count).collect();
+            let _ = save_manifests_raw(app, &game.id, &pruned);
+        }
+    }
+}
+/// 直接覆写某游戏的本地 manifest 列表（用于清理旧记录）
+fn save_manifests_raw(
+    app: &AppHandle,
+    game_id: &str,
+    manifests: &[manifest::BackupManifest],
+) -> anyhow::Result<()> {
+    let dir = app.path().app_local_data_dir()?.join("manifests");
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join(format!("{}.json", game_id));
+    let json = serde_json::to_string_pretty(manifests)?;
+    std::fs::write(&path, json)?;
+    Ok(())
+}
 /// Tauri Commands 导出
 pub mod commands {
     use super::*;
@@ -173,66 +249,58 @@ pub mod commands {
 
             // 扫描每个存档路径
             for save_path_str in &game.save_paths {
-                let save_path = std::path::Path::new(save_path_str);
-                if !save_path.exists() {
-                    continue;
-                }
-
-                // 获取文件列表（如果是目录则递归）
-                let entries: Vec<std::path::PathBuf> = if save_path.is_file() {
-                    vec![save_path.to_path_buf()]
-                } else {
-                    walkdir::WalkDir::new(save_path)
-                        .into_iter()
-                        .filter_map(|e| e.ok())
-                        .filter(|e| e.file_type().is_file())
-                        .map(|e| e.path().to_path_buf())
-                        .collect()
-                };
-
-                for path in &entries {
-                    // 计算相对路径
-                    let rel_path = if save_path.is_file() {
-                        save_path
-                            .file_name()
-                            .unwrap()
-                            .to_string_lossy()
-                            .to_string()
+                for save_path in crate::utils::path::resolve_save_paths(save_path_str) {
+                    // 获取文件列表（如果是目录则递归）
+                    let entries: Vec<std::path::PathBuf> = if save_path.is_file() {
+                        vec![save_path.to_path_buf()]
                     } else {
-                        match path.strip_prefix(save_path) {
-                            Ok(p) => p.to_string_lossy().replace('\\', "/"),
-                            Err(_) => continue,
-                        }
+                        walkdir::WalkDir::new(&save_path)
+                            .into_iter()
+                            .filter_map(|e| e.ok())
+                            .filter(|e| e.file_type().is_file())
+                            .map(|e| e.path().to_path_buf())
+                            .collect()
                     };
-
-                    // 获取文件元信息
-                    let meta = match path.metadata() {
-                        Ok(m) => m,
-                        Err(_) => continue,
-                    };
-                    let modified_time: chrono::DateTime<chrono::Utc> =
-                        match meta.modified() {
-                            Ok(t) => t.into(),
+                    for path in &entries {
+                        // 计算相对路径
+                        let rel_path = if save_path.is_file() {
+                            save_path
+                                .file_name()
+                                .unwrap()
+                                .to_string_lossy()
+                                .to_string()
+                        } else {
+                            match path.strip_prefix(&save_path) {
+                                Ok(p) => p.to_string_lossy().replace('\\', "/"),
+                                Err(_) => continue,
+                            }
+                        };
+                        // 获取文件元信息
+                        let meta = match path.metadata() {
+                            Ok(m) => m,
                             Err(_) => continue,
                         };
-
-                    // 计算 SHA256
-                    let content = match std::fs::read(path) {
-                        Ok(c) => c,
-                        Err(_) => continue,
-                    };
-                    let sha256 = crate::utils::hash::sha256_string(&content);
-
-                    // 双重校验：对比 mtime 和 SHA256
-                    let has_changed = match last_files.get(&rel_path) {
-                        Some(last) => {
-                            last.modified_time != modified_time || last.sha256 != sha256
+                        let modified_time: chrono::DateTime<chrono::Utc> =
+                            match meta.modified() {
+                                Ok(t) => t.into(),
+                                Err(_) => continue,
+                            };
+                        // 计算 SHA256
+                        let content = match std::fs::read(path) {
+                            Ok(c) => c,
+                            Err(_) => continue,
+                        };
+                        let sha256 = crate::utils::hash::sha256_string(&content);
+                        // 双重校验：对比 mtime 和 SHA256
+                        let has_changed = match last_files.get(&rel_path) {
+                            Some(last) => {
+                                last.modified_time != modified_time || last.sha256 != sha256
+                            }
+                            None => true, // 新文件
+                        };
+                        if has_changed {
+                            changed_count += 1;
                         }
-                        None => true, // 新文件
-                    };
-
-                    if has_changed {
-                        changed_count += 1;
                     }
                 }
             }

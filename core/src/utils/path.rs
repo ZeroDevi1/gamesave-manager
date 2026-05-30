@@ -97,3 +97,34 @@ pub fn shrink_env(path: &str) -> String {
     normalized_path
 }
 
+/// 解析游戏存档路径，展开环境变量与 glob 通配符，返回实际存在的物理路径列表
+///
+/// # 核心语义
+/// 用户配置的存档路径可能包含 Windows 环境变量占位符（如 `%APPDATA%`）以及
+/// glob 通配符（如 `HK Autosave*`）。本函数先将环境变量展开为绝对物理路径，
+/// 再对含 `*`、`?` 的路径执行 glob 匹配，最终返回所有真实存在的文件或目录路径。
+///
+/// # 返回值
+/// 若路径不含通配符且存在，返回包含该路径的单元素 Vec；
+/// 若含通配符，返回所有匹配且真实存在的路径；
+/// 若路径不存在或 glob 无匹配，返回空 Vec。
+pub fn resolve_save_paths(save_path_str: &str) -> Vec<std::path::PathBuf> {
+    let expanded = expand_env(save_path_str);
+    // 若路径中包含 glob 通配符，执行模式匹配
+    if expanded.contains('*') || expanded.contains('?') || expanded.contains('[') {
+        match glob::glob(&expanded) {
+            Ok(paths) => paths
+                .filter_map(|p| p.ok().filter(|p| p.exists()))
+                .collect(),
+            Err(_) => Vec::new(),
+        }
+    } else {
+        let path = std::path::Path::new(&expanded);
+        if path.exists() {
+            vec![path.to_path_buf()]
+        } else {
+            Vec::new()
+        }
+    }
+}
+

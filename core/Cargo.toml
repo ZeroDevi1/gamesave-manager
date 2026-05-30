@@ -58,6 +58,8 @@ futures = "0.3"
 tokio-util = { version = "0.7", features = ["io"] }
 # MD5（Alist 登录密码哈希）
 md5 = "0.7"
+# Glob 通配符匹配（支持存档路径如 HK Autosave*）
+glob = "0.3"
 urlencoding = "2"
 regex = "1"
 

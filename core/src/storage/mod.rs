@@ -50,7 +50,6 @@ impl StorageBackend {
             Self::S3(b) => b.mkdir(path).await,
         }
     }
-
     /// 将本地物理存档压缩包上传至云端指定的目标路径
     pub async fn upload_file(&self, local_path: &str, remote_path: &str) -> anyhow::Result<()> {
         match self {
@@ -60,7 +59,6 @@ impl StorageBackend {
             Self::S3(b) => b.upload_file(local_path, remote_path).await,
         }
     }
-
     /// 从云端物理拉取指定路径 of 存档，覆盖写入本地绝对物理路径
     pub async fn download_file(&self, remote_path: &str, local_path: &str) -> anyhow::Result<()> {
         match self {
@@ -70,7 +68,6 @@ impl StorageBackend {
             Self::S3(b) => b.download_file(remote_path, local_path).await,
         }
     }
-
     /// 列出云端指定物理目录下的所有子条目列表
     pub async fn list_dir(&self, path: &str) -> anyhow::Result<Vec<RemoteFileEntry>> {
         match self {
@@ -78,6 +75,15 @@ impl StorageBackend {
             Self::Alist(b) => b.list_dir(path).await,
             Self::Webdav(b) => b.list_dir(path).await,
             Self::S3(b) => b.list_dir(path).await,
+        }
+    }
+    /// 删除云端指定路径的物理文件或目录
+    pub async fn delete(&self, remote_path: &str) -> anyhow::Result<()> {
+        match self {
+            Self::Netdisk(b) => b.delete(remote_path).await,
+            Self::Alist(b) => b.delete(remote_path).await,
+            Self::Webdav(b) => b.delete(remote_path).await,
+            Self::S3(b) => b.delete(remote_path).await,
         }
     }
 }
@@ -1571,14 +1577,64 @@ impl NetdiskBackend {
             return Ok(entries);
         }
         // 其它网盘 WebDAV 网关回退
+        // 其它网盘 WebDAV 网关回退
         let real_path = self.get_real_path(path);
         let webdav_backend = self.to_webdav_backend();
         webdav_backend.list_dir(&real_path).await
             .map_err(|e| self.webdav_error_context(&real_path, e))
     }
-
-    // =====================================================================
-    // 夸克 TV 扫码登录方法（请求签名 + 二维码 + 轮询 + Token 交换）
+    /// 删除直连网盘云端指定路径的物理文件或目录
+    pub async fn delete(&self, remote_path: &str) -> anyhow::Result<()> {
+        let driver = &self.config.driver;
+        if driver.contains("quark") {
+            let fid = self.quark_resolve_path(remote_path).await?;
+            let body = serde_json::json!({ "fids": [fid], "to_pdir_fid": "" });
+            let resp = self.quark_request("/file/delete", "POST", Some(&body)).await?;
+            self.quark_parse_response::<serde_json::Value>(resp).await?;
+            return Ok(());
+        }
+        if driver.contains("baidu") {
+            let client = reqwest::Client::new();
+            let clean_path = if remote_path == "/" || remote_path.is_empty() {
+                "/".to_string()
+            } else {
+                format!("/{}", remote_path.trim_start_matches('/'))
+            };
+            let filelist = serde_json::json!([{"path": clean_path}]);
+            let body = serde_json::json!({
+                "async": 0,
+                "filelist": serde_json::to_string(&filelist)?,
+                "ondup": 1,
+            });
+            let url = format!(
+                "https://pan.baidu.com/rest/2.0/xpan/file?method=filemanager&opera=delete&access_token={}",
+                self.config.token
+            );
+            let resp = client
+                .post(&url)
+                .header("User-Agent", "pan.baidu.com")
+                .form(&body)
+                .send()
+                .await?;
+            let status = resp.status();
+            let err_text = resp.text().await.unwrap_or_default();
+            if !status.is_success() {
+                anyhow::bail!("百度网盘删除失败 (HTTP {}): {}", status, err_text);
+            }
+            let baidu_resp: serde_json::Value = serde_json::from_str(&err_text)
+                .map_err(|e| anyhow::anyhow!("解析百度网盘删除响应失败 ({}): {}", e, err_text))?;
+            let errno = baidu_resp.get("errno").and_then(|v| v.as_i64()).unwrap_or(-1);
+            if errno != 0 {
+                anyhow::bail!("百度网盘删除失败 (errno {}): {}", errno, err_text);
+            }
+            return Ok(());
+        }
+        // 其它网盘 WebDAV 网关回退
+        let real_path = self.get_real_path(remote_path);
+        let webdav_backend = self.to_webdav_backend();
+        webdav_backend.delete(&real_path).await
+            .map_err(|e| self.webdav_error_context(&real_path, e))
+    }
     // =====================================================================
 
     /// 生成夸克 TV API 请求签名（x-pan-token）
@@ -1744,11 +1800,9 @@ impl AlistBackend {
         let token = self.get_effective_token().await?;
         crate::alist::fs::download_file(&self.config.base_url, &token, remote_path, local_path).await
     }
-
     async fn list_dir(&self, path: &str) -> anyhow::Result<Vec<RemoteFileEntry>> {
         let token = self.get_effective_token().await?;
         let raw_entries = crate::alist::fs::list_dir(&self.config.base_url, &token, path).await?;
-        
         // 转换 Alist 原生数据实体为系统通用抽象实体
         let converted = raw_entries
             .into_iter()
@@ -1761,6 +1815,10 @@ impl AlistBackend {
             })
             .collect();
         Ok(converted)
+    }
+    async fn delete(&self, remote_path: &str) -> anyhow::Result<()> {
+        let token = self.get_effective_token().await?;
+        crate::alist::fs::remove(&self.config.base_url, &token, remote_path).await
     }
 }
 
@@ -1879,24 +1937,36 @@ impl WebdavBackend {
         let client = self.create_client();
         let endpoint = self.config.endpoint.trim_end_matches('/');
         let url = format!("{}{}", endpoint, remote_path);
-
         let mut req = client.get(&url);
         req = self.apply_auth(req);
         let resp = req.send().await?;
-
         let status = resp.status();
         if !status.is_success() {
             let err_text = resp.text().await.unwrap_or_default();
             anyhow::bail!("从 WebDAV 下载备份失败 (HTTP {}): {}", status, err_text);
         }
-
         // 创建本地多级目录
         if let Some(parent) = Path::new(local_path).parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-
         let bytes = resp.bytes().await?;
         tokio::fs::write(local_path, &bytes).await?;
+        Ok(())
+    }
+    /// 删除 WebDAV 云端指定路径的物理文件或目录
+    async fn delete(&self, path: &str) -> anyhow::Result<()> {
+        let client = self.create_client();
+        let endpoint = self.config.endpoint.trim_end_matches('/');
+        let url = format!("{}{}", endpoint, path);
+        let delete_method = reqwest::Method::from_bytes(b"DELETE")?;
+        let req = client.request(delete_method, &url);
+        let req = self.apply_auth(req);
+        let resp = req.send().await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let err_text = resp.text().await.unwrap_or_default();
+            anyhow::bail!("WebDAV 删除失败 (HTTP {}): {}", status, err_text);
+        }
         Ok(())
     }
 
@@ -1961,11 +2031,6 @@ impl WebdavBackend {
                 .last()
                 .unwrap_or_default()
                 .to_string();
-
-            if name.is_empty() {
-                continue;
-            }
-
             // 滤除掉查询目录自身的那一条 PROPFIND 记录
             let clean_href = href.trim_end_matches('/');
             let check_self_path_alist = format!("{}{}", base_path_filter, path).replace("//", "/");
@@ -2035,13 +2100,13 @@ impl S3Backend {
     async fn list_dir(&self, _path: &str) -> anyhow::Result<Vec<RemoteFileEntry>> {
         anyhow::bail!("S3 对象存储支持目前正处于实验性开发阶段，敬请期待！推荐优先选用稳定性极佳的 WebDAV 或 Alist/OpenList 后端。")
     }
+    async fn delete(&self, _remote_path: &str) -> anyhow::Result<()> {
+        anyhow::bail!("S3 对象存储删除功能目前正处于实验性开发阶段，敬请期待！推荐优先选用稳定性极佳的 WebDAV 或 Alist/OpenList 后端。")
+    }
 }
-
 // =========================================================================
 // 4. 统一存储驱动工厂 (Factory Pattern)
 // =========================================================================
-
-/// 动态构建具体的 StorageBackend 存储分发变体
 pub fn get_storage_backend(config: &crate::config::model::AppConfig) -> anyhow::Result<StorageBackend> {
     match &config.storage {
         Some(StorageConfig::Netdisk(ref netdisk)) => Ok(StorageBackend::Netdisk(NetdiskBackend::new(netdisk.clone()))),

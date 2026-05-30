@@ -74,16 +74,16 @@ async fn perform_restore_from_remote_zip(
     let ts_str = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
 
     // 解压前先备份现有存档
+    // 解压前先备份现有存档
     for save_path_str in &game.save_paths {
-        let save_path = Path::new(save_path_str);
-        if save_path.exists() {
-            let bak_path = format!("{}.bak_{}", save_path_str, ts_str);
+        for save_path in crate::utils::path::resolve_save_paths(save_path_str) {
+            let bak_path = format!("{}.bak_{}", save_path.to_string_lossy(), ts_str);
             if save_path.is_dir() {
                 let _ = std::fs::remove_dir_all(&bak_path);
-                copy_dir_all(save_path, Path::new(&bak_path))?;
+                copy_dir_all(&save_path, Path::new(&bak_path))?;
             } else {
                 let _ = std::fs::remove_file(&bak_path);
-                std::fs::copy(save_path, &bak_path)?;
+                std::fs::copy(&save_path, &bak_path)?;
             }
         }
     }

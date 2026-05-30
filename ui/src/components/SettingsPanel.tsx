@@ -101,6 +101,7 @@ export default function SettingsPanel() {
   // 6. 应用全局主题与 API Key State
   const [theme, setTheme] = useState('system')
   const [apiKey, setApiKey] = useState('')
+  const [backupRetentionLimit, setBackupRetentionLimit] = useState<number | undefined>(undefined)
   const [saving, setSaving] = useState(false)
   // 夸克 TV 扫码登录状态
   const [tvQrOpen, setTvQrOpen] = useState(false)
@@ -124,10 +125,10 @@ export default function SettingsPanel() {
     }).catch(err => {
       console.warn('[Netdisk] 轮询刷新 Token 异常:', err)
     })
-
     loadConfig().then((config) => {
       setTheme(config.settings?.theme ?? 'system')
       setApiKey(config.settings?.steamgriddb_api_key ?? '')
+      setBackupRetentionLimit(config.settings?.backup_retention_limit ?? undefined)
 
       // 优先解析多后端存储配置
       if (config.storage) {
@@ -436,7 +437,7 @@ export default function SettingsPanel() {
       const config = await loadConfig()
       config.settings.theme = theme
       config.settings.steamgriddb_api_key = apiKey || undefined
-
+      config.settings.backup_retention_limit = backupRetentionLimit || undefined
       // 组装并写入多存储后端激活参数
       if (storageType === 'netdisk') {
         config.storage = {
@@ -798,6 +799,21 @@ export default function SettingsPanel() {
             onChange={(e) => setApiKey(e.target.value)}
             placeholder="可选，用于获取游戏封面"
           />
+        </div>
+        <div className={styles.row}>
+          <Label>远程备份保留数量</Label>
+          <RadioGroup
+            layout="horizontal"
+            value={String(backupRetentionLimit ?? 'unlimited')}
+            onChange={(_, data) => {
+              const val = data.value
+              setBackupRetentionLimit(val === 'unlimited' ? undefined : Number(val))
+            }}
+          >
+            <Radio value="unlimited" label="不限制" />
+            <Radio value="10" label="保留 10 个" />
+            <Radio value="20" label="保留 20 个" />
+          </RadioGroup>
         </div>
         <div className={styles.buttonRow}>
           <Button appearance="primary" onClick={handleSave} disabled={saving}>

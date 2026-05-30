@@ -196,3 +196,46 @@ pub async fn download_file(url: &str, token: &str, remote_path: &str, local_path
     std::fs::write(local_path, &bytes)?;
     Ok(())
 }
+/// 从 Alist 删除文件或目录
+///
+/// # 参数说明
+/// * `url` - Alist/OpenList 的服务端基础 URL
+/// * `token` - 登录授权获取到的 Bearer Token
+/// * `remote_path` - 待删除的网盘绝对路径
+pub async fn remove(url: &str, token: &str, remote_path: &str) -> anyhow::Result<()> {
+    let path = Path::new(remote_path);
+    let dir = path
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "/".to_string());
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .ok_or_else(|| anyhow::anyhow!("无法从路径提取文件名: {}", remote_path))?;
+    let client = reqwest::Client::new();
+    let req = super::types::RemoveRequest {
+        dir,
+        names: vec![name],
+    };
+    let resp = client
+        .post(format!("{}/api/fs/remove", url.trim_end_matches('/')))
+        .header("Authorization", token)
+        .json(&req)
+        .send()
+        .await?;
+    let status = resp.status();
+    let err_text = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        anyhow::bail!("删除失败 (HTTP {}): {}", status, err_text);
+    }
+    let api_resp: super::types::AlistApiResponse<serde_json::Value> = serde_json::from_str(&err_text)
+        .map_err(|e| anyhow::anyhow!(
+            "解析删除响应失败 ({}): {}",
+            e,
+            err_text
+        ))?;
+    if api_resp.code != 200 {
+        anyhow::bail!("删除失败: {}", api_resp.message);
+    }
+    Ok(())
+}

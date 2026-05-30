@@ -4,7 +4,6 @@ use super::manifest::{BackupManifest, FileEntry};
 use super::{BackupResult, BackupType};
 use crate::utils::hash;
 use chrono::Utc;
-use std::path::Path;
 use tauri::AppHandle;
 use walkdir::WalkDir;
 
@@ -53,53 +52,45 @@ pub async fn perform_full_backup(app: &AppHandle, game_id: &str) -> anyhow::Resu
         .compression_method(zip::CompressionMethod::Deflated);
 
     for save_path_str in &game.save_paths {
-        let save_path = Path::new(save_path_str);
-        if !save_path.exists() {
-            continue;
-        }
-
-        if save_path.is_file() {
-            let rel_path = save_path.file_name().unwrap().to_string_lossy().to_string();
-            let content = std::fs::read(save_path)?;
-            let sha256 = hash::sha256_string(&content);
-            let meta = std::fs::metadata(save_path)?;
-            let modified_time = meta.modified()?.into();
-
-            zip.start_file(&rel_path, options)?;
-            zip.write_all(&content)?;
-
-            files.push(FileEntry {
-                relative_path: rel_path,
-                size: meta.len(),
-                modified_time,
-                sha256,
-            });
-        } else {
-            for entry in WalkDir::new(save_path) {
-                let entry = entry?;
-                if entry.file_type().is_dir() {
-                    continue;
-                }
-                let path = entry.path();
-                let rel_path = path
-                    .strip_prefix(save_path)?
-                    .to_string_lossy()
-                    .replace('\\', "/");
-
-                let content = std::fs::read(path)?;
+        for save_path in crate::utils::path::resolve_save_paths(save_path_str) {
+            if save_path.is_file() {
+                let rel_path = save_path.file_name().unwrap().to_string_lossy().to_string();
+                let content = std::fs::read(&save_path)?;
                 let sha256 = hash::sha256_string(&content);
-                let meta = entry.metadata()?;
+                let meta = std::fs::metadata(&save_path)?;
                 let modified_time = meta.modified()?.into();
-
                 zip.start_file(&rel_path, options)?;
                 zip.write_all(&content)?;
-
                 files.push(FileEntry {
                     relative_path: rel_path,
                     size: meta.len(),
                     modified_time,
                     sha256,
                 });
+            } else {
+                for entry in WalkDir::new(&save_path) {
+                    let entry = entry?;
+                    if entry.file_type().is_dir() {
+                        continue;
+                    }
+                    let path = entry.path();
+                    let rel_path = path
+                        .strip_prefix(&save_path)?
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    let content = std::fs::read(path)?;
+                    let sha256 = hash::sha256_string(&content);
+                    let meta = entry.metadata()?;
+                    let modified_time = meta.modified()?.into();
+                    zip.start_file(&rel_path, options)?;
+                    zip.write_all(&content)?;
+                    files.push(FileEntry {
+                        relative_path: rel_path,
+                        size: meta.len(),
+                        modified_time,
+                        sha256,
+                    });
+                }
             }
         }
     }
@@ -146,10 +137,11 @@ pub async fn perform_full_backup(app: &AppHandle, game_id: &str) -> anyhow::Resu
     {
         log::warn!("[全量备份] 远端清单上传失败（不影响备份本身）: {}", e);
     }
-
+    // 根据设置清理旧的全量/增量远程备份
+    let backend = crate::storage::get_storage_backend(&config)?;
+    super::cleanup_old_backups(app, game, &config, &backend).await;
     // 清理本地临时文件
     let _ = std::fs::remove_file(&zip_path);
-
     Ok(BackupResult {
         success: true,
         message: "全量备份完成".to_string(),

@@ -1431,6 +1431,7 @@ dependencies = [
  "chrono",
  "dirs 5.0.1",
  "futures",
+ "glob",
  "hex",
  "log",
  "md5",
