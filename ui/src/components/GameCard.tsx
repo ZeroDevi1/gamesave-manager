@@ -6,7 +6,6 @@ import {
   Text,
   Button,
   makeStyles,
-  tokens,
 } from '@fluentui/react-components'
 import {
   ArrowUpload24Regular,
@@ -21,17 +20,13 @@ const useStyles = makeStyles({
   card: {
     width: '200px',
     cursor: 'pointer',
-    transition: 'transform 0.2s, box-shadow 0.2s',
-    // hover 微光效果：上浮 + 发光阴影
-    ':hover': {
-      transform: 'translateY(-6px)',
-      boxShadow: `0 12px 32px ${tokens.colorBrandStroke1}33, ${tokens.shadow16}`,
-    },
+    overflow: 'hidden',
+    // 玻璃外观由 .lg-card 工具类提供，避免 Griffel 对 CSS 变量做严格类型校验
   },
   preview: {
     // 统一 2:3 比例封面（200×300）
     height: '300px',
-    backgroundColor: tokens.colorNeutralBackground1,
+    backgroundColor: 'var(--lg-bg-secondary)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -46,15 +41,14 @@ const useStyles = makeStyles({
   placeholder: {
     width: '100%',
     height: '100%',
-    // 渐变占位：品牌色渐变而不是纯色圆形
-    background: `linear-gradient(135deg, ${tokens.colorBrandBackground2} 0%, ${tokens.colorBrandBackground} 100%)`,
+    // 渐变占位：品牌色渐变融入玻璃氛围
+    background: 'linear-gradient(135deg, var(--lg-brand-subtle) 0%, var(--lg-brand) 100%)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    color: tokens.colorNeutralForegroundOnBrand,
+    color: 'var(--lg-text-on-brand)',
     fontSize: '48px',
     fontWeight: 'bold',
-    borderRadius: tokens.borderRadiusMedium,
   },
   actions: {
     display: 'flex',
@@ -81,7 +75,7 @@ export default function GameCard({ game, onBackup, onRestore, onLaunch }: GameCa
 
   return (
     <Card
-      className={styles.card}
+      className={`${styles.card} lg-card`}
       onClick={() => navigate(`/game/${game.id}`)}
     >
       <CardPreview className={styles.preview}>
@@ -104,7 +98,7 @@ export default function GameCard({ game, onBackup, onRestore, onLaunch }: GameCa
           <Text weight="semibold" size={400}>{game.name}</Text>
         }
         description={
-          <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
+          <Text size={200} style={{ color: 'var(--lg-text-secondary)' }}>
             {game.last_backup
               ? `上次备份: ${new Date(game.last_backup).toLocaleString('zh-CN')}`
               : '尚未备份'}

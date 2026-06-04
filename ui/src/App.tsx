@@ -1,4 +1,4 @@
-// App.tsx - 根组件：FluentProvider + 路由
+// App.tsx - 根组件：FluentProvider + 路由 + Liquid Glass 主题同步
 import {
   FluentProvider,
   Spinner,
@@ -30,9 +30,10 @@ function AnimatedRoutes() {
 }
 
 function App() {
-  const { fluentTheme, setThemeMode } = useAppStore()
+  const { fluentTheme, themeMode, setThemeMode } = useAppStore()
   const [loading, setLoading] = useState(true)
 
+  // 初始化时读取用户设置的主题模式
   useEffect(() => {
     loadConfig()
       .then((config) => {
@@ -44,6 +45,15 @@ function App() {
       })
       .finally(() => setLoading(false))
   }, [setThemeMode])
+
+  // 将 React 层的主题模式同步到 <html data-theme>，使 Liquid Glass CSS 令牌生效
+  useEffect(() => {
+    if (themeMode === 'system') {
+      document.documentElement.removeAttribute('data-theme')
+    } else {
+      document.documentElement.setAttribute('data-theme', themeMode)
+    }
+  }, [themeMode])
 
   if (loading) {
     return (

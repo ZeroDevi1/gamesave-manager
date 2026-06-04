@@ -12,7 +12,6 @@ import {
   Spinner,
   Text,
   Badge,
-  tokens,
 } from '@fluentui/react-components'
 import { Clock24Regular, Cloud24Regular } from '@fluentui/react-icons'
 import { useState, useMemo } from 'react'
@@ -94,12 +93,21 @@ export default function RestoreDialog({
 
   return (
     <Dialog open={open} onOpenChange={(_, data) => !data.open && onClose()}>
-      <DialogSurface>
+      <DialogSurface
+        style={{
+          backgroundColor: 'var(--lg-bg-elevated)',
+          backdropFilter: 'blur(var(--lg-blur-lg)) saturate(var(--lg-saturate))',
+          WebkitBackdropFilter: 'blur(var(--lg-blur-lg)) saturate(var(--lg-saturate))',
+          border: '1px solid var(--lg-border-color)',
+          borderRadius: 'var(--lg-radius-xl)',
+          boxShadow: 'var(--lg-shadow-high)',
+        }}
+      >
         <DialogBody>
-          <DialogTitle>恢复存档 — {gameName}</DialogTitle>
-          <DialogContent>
+          <DialogTitle style={{ color: 'var(--lg-text-primary)' }}>恢复存档 — {gameName}</DialogTitle>
+          <DialogContent style={{ color: 'var(--lg-text-primary)' }}>
             {totalCount === 0 ? (
-              <Text style={{ color: tokens.colorNeutralForeground3 }}>
+              <Text style={{ color: 'var(--lg-text-secondary)' }}>
                 暂无可用备份，请先执行备份操作。
               </Text>
             ) : (
@@ -121,11 +129,11 @@ export default function RestoreDialog({
                     <Radio value={opt.key} />
                     {opt.type === 'local' ? (
                       <Clock24Regular
-                        style={{ color: tokens.colorBrandForeground1 }}
+                        style={{ color: 'var(--lg-brand)' }}
                       />
                     ) : (
                       <Cloud24Regular
-                        style={{ color: tokens.colorBrandForeground1 }}
+                        style={{ color: 'var(--lg-brand)' }}
                       />
                     )}
                     <div style={{ flexGrow: 1, minWidth: 0 }}>
@@ -141,7 +149,7 @@ export default function RestoreDialog({
                         {opt.label}
                       </div>
                       {opt.extra && (
-                        <div style={{ fontSize: '12px', color: tokens.colorNeutralForeground3 }}>
+                        <div style={{ fontSize: '12px', color: 'var(--lg-text-secondary)' }}>
                           {opt.extra}
                         </div>
                       )}

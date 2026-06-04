@@ -11,7 +11,6 @@ import {
   TableCell,
   TableCellLayout,
   makeStyles,
-  tokens,
   MessageBar,
   MessageBarBody,
 } from '@fluentui/react-components'
@@ -40,17 +39,34 @@ const useStyles = makeStyles({
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
+    padding: '10px',
+    backgroundColor: 'var(--lg-bg-secondary)',
+    border: '1px solid var(--lg-border-color)',
+    borderRadius: 'var(--lg-radius-md)',
+  },
+  pathInput: {
+    backgroundColor: 'transparent',
+    border: 'none',
+  },
+  tableCard: {
+    backgroundColor: 'var(--lg-bg-primary)',
+    backdropFilter: 'blur(var(--lg-blur-md)) saturate(var(--lg-saturate))',
+    WebkitBackdropFilter: 'blur(var(--lg-blur-md)) saturate(var(--lg-saturate))',
+    border: '1px solid var(--lg-border-color)',
+    borderRadius: 'var(--lg-radius-lg)',
+    boxShadow: 'var(--lg-shadow-sm)',
+    padding: '8px',
   },
   // 表格行 hover 高亮效果
   tableRow: {
     transition: 'background-color 0.15s ease',
     ':hover': {
-      backgroundColor: tokens.colorNeutralBackground1Hover,
+      backgroundColor: 'var(--lg-bg-interactive-hover)',
     },
   },
   // 斑马纹交替背景
   tableRowEven: {
-    backgroundColor: tokens.colorNeutralBackground2,
+    backgroundColor: 'var(--lg-bg-secondary)',
   },
   // 空状态居中展示
   emptyState: {
@@ -60,7 +76,7 @@ const useStyles = makeStyles({
     justifyContent: 'center',
     padding: '40px 0',
     gap: '12px',
-    color: tokens.colorNeutralForeground3,
+    color: 'var(--lg-text-secondary)',
   },
   emptyIcon: {
     fontSize: '36px',
@@ -209,7 +225,7 @@ export default function StorageBrowser({ tempConfig, onBackupRootChange }: Stora
           disabled={breadcrumbs.length <= 1}
           onClick={() => setBreadcrumbs((prev) => prev.slice(0, -1))}
         />
-        <Input value={displayPath} readOnly style={{ flexGrow: 1 }} />
+        <Input value={displayPath} readOnly className={styles.pathInput} style={{ flexGrow: 1 }} />
         <Button
           icon={<ArrowSync24Regular />}
           size="small"
@@ -239,6 +255,7 @@ export default function StorageBrowser({ tempConfig, onBackupRootChange }: Stora
       {loading ? (
         <Spinner label="加载中..." />
       ) : (
+        <div className={styles.tableCard}>
         <Table>
           <TableHeader>
             <TableRow>
@@ -290,6 +307,7 @@ export default function StorageBrowser({ tempConfig, onBackupRootChange }: Stora
             )}
           </TableBody>
         </Table>
+        </div>
       )}
     </div>
   )

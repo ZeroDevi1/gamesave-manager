@@ -71,7 +71,8 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: '24px',
     minHeight: '100%',
-    backgroundColor: tokens.colorNeutralBackground2,
+    // 让全局 body 渐变透出来
+    backgroundColor: 'transparent',
     overflowY: 'auto',
     scrollbarWidth: 'none',
     '::-webkit-scrollbar': {
@@ -84,6 +85,17 @@ const useStyles = makeStyles({
     justifyContent: 'space-between',
     gap: '16px',
     flexWrap: 'wrap',
+    padding: '14px 18px',
+    // Liquid Glass 标题栏
+    backgroundColor: 'var(--lg-bg-primary)',
+    backdropFilter: 'blur(var(--lg-blur-md)) saturate(var(--lg-saturate))',
+    WebkitBackdropFilter: 'blur(var(--lg-blur-md)) saturate(var(--lg-saturate))',
+    border: '1px solid var(--lg-border-color)',
+    borderRadius: 'var(--lg-radius-lg)',
+    boxShadow: 'var(--lg-shadow-sm)',
+  },
+  title: {
+    color: 'var(--lg-text-primary)',
   },
   searchBox: {
     display: 'flex',
@@ -91,12 +103,22 @@ const useStyles = makeStyles({
     gap: '8px',
     flexGrow: 1,
     maxWidth: '400px',
+    padding: '4px 10px',
+    backgroundColor: 'var(--lg-bg-interactive)',
+    border: '1px solid var(--lg-border-color)',
+    borderRadius: 'var(--lg-radius-md)',
+    ':hover': {
+      backgroundColor: 'var(--lg-bg-interactive-hover)',
+      border: '1px solid var(--lg-border-hover)',
+    },
   },
   searchInput: {
     flexGrow: 1,
+    backgroundColor: 'transparent',
+    border: 'none',
     transition: 'all 200ms cubic-bezier(0.1, 0.9, 0.2, 1)',
     '&:focus-within': {
-      boxShadow: `0 0 0 2px ${tokens.colorBrandBackground2}`,
+      boxShadow: '0 0 0 2px var(--lg-brand-subtle)',
     }
   },
   actions: {
@@ -104,37 +126,41 @@ const useStyles = makeStyles({
     gap: '10px',
   },
   tableCard: {
-    backgroundColor: tokens.colorNeutralBackground1,
-    borderRadius: tokens.borderRadiusXLarge, // Win11 大圆角
-    ...shorthands.border('1px', 'solid', tokens.colorNeutralStroke3),
-    boxShadow: tokens.shadow8,
+    // Liquid Glass 表格卡片
+    backgroundColor: 'var(--lg-bg-primary)',
+    backdropFilter: 'blur(var(--lg-blur-md)) saturate(var(--lg-saturate))',
+    WebkitBackdropFilter: 'blur(var(--lg-blur-md)) saturate(var(--lg-saturate))',
+    borderRadius: 'var(--lg-radius-lg)',
+    ...shorthands.border('1px', 'solid', 'var(--lg-border-color)'),
+    boxShadow: 'var(--lg-shadow-sm)',
     padding: '8px',
     transition: 'box-shadow 250ms ease, transform 250ms ease',
     '&:hover': {
-      boxShadow: tokens.shadow16, // Hover 时轻微浮起感
+      boxShadow: 'var(--lg-shadow-elevated)',
     }
   },
   tableHeader: {
-    backgroundColor: tokens.colorNeutralBackground3,
-    ...shorthands.borderBottom('1px', 'solid', tokens.colorNeutralStroke3),
+    backgroundColor: 'var(--lg-bg-secondary)',
+    ...shorthands.borderBottom('1px', 'solid', 'var(--lg-border-color)'),
   },
   tableHeaderCell: {
     fontWeight: tokens.fontWeightSemibold,
-    color: tokens.colorNeutralForeground2,
+    color: 'var(--lg-text-secondary)',
     paddingTop: '12px',
     paddingBottom: '12px',
   },
   tableRow: {
     transition: 'background-color 150ms ease',
-    borderBottom: `1px solid ${tokens.colorNeutralStrokeSubtle}`,
+    borderBottom: '1px solid var(--lg-border-subtle)',
+    color: 'var(--lg-text-primary)',
     '&:hover': {
-      backgroundColor: tokens.colorNeutralBackground1Hover,
+      backgroundColor: 'var(--lg-bg-interactive-hover)',
     },
   },
   pathCell: {
     fontFamily: 'monospace',
     fontSize: '13px',
-    color: tokens.colorNeutralForeground3,
+    color: 'var(--lg-text-secondary)',
     maxWidth: '400px',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -142,7 +168,7 @@ const useStyles = makeStyles({
   },
   empty: {
     textAlign: 'center',
-    color: tokens.colorNeutralForeground3,
+    color: 'var(--lg-text-secondary)',
     padding: '80px 0',
   },
   formField: {
@@ -150,6 +176,7 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: '6px',
     marginBottom: '16px',
+    color: 'var(--lg-text-primary)',
   },
   dialogContent: {
     display: 'flex',
@@ -168,15 +195,15 @@ const useStyles = makeStyles({
     fontFamily: 'monospace',
     fontSize: '13px',
   },
-  // Win11 磨砂高保真搜索列表项
+  // Liquid Glass 搜索列表项
   resultCard: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'flex-start',
     padding: '12px 16px',
-    backgroundColor: tokens.colorNeutralBackground1,
-    borderRadius: tokens.borderRadiusMedium,
-    ...shorthands.border('1px', 'solid', tokens.colorNeutralStroke3),
+    backgroundColor: 'var(--lg-bg-primary)',
+    borderRadius: 'var(--lg-radius-md)',
+    ...shorthands.border('1px', 'solid', 'var(--lg-border-color)'),
     cursor: 'pointer',
     transition: 'all 200ms cubic-bezier(0.1, 0.9, 0.2, 1)',
     position: 'relative',
@@ -184,11 +211,10 @@ const useStyles = makeStyles({
     gap: '4px',
     width: '100%',
     '&:hover': {
-      backgroundColor: tokens.colorNeutralBackground1Hover,
-      ...shorthands.border('1px', 'solid', tokens.colorBrandStroke1),
-      transform: 'translateX(4px)', // 平滑右位移
+      backgroundColor: 'var(--lg-bg-interactive-hover)',
+      ...shorthands.border('1px', 'solid', 'var(--lg-brand)'),
+      transform: 'translateX(4px)',
     },
-    // 左边缘的精致小蓝色选中拉伸条
     '&::before': {
       content: '""',
       position: 'absolute',
@@ -196,8 +222,8 @@ const useStyles = makeStyles({
       top: '12px',
       bottom: '12px',
       width: '3px',
-      borderRadius: tokens.borderRadiusCircular,
-      backgroundColor: tokens.colorBrandStroke1,
+      borderRadius: '999px',
+      backgroundColor: 'var(--lg-brand)',
       opacity: 0,
       transform: 'scaleY(0.4)',
       transition: 'all 200ms ease',
@@ -208,22 +234,22 @@ const useStyles = makeStyles({
     }
   },
   pcgwPathsContainer: {
-    backgroundColor: tokens.colorNeutralBackground2,
+    backgroundColor: 'var(--lg-bg-secondary)',
     padding: '12px 16px',
-    borderRadius: tokens.borderRadiusMedium,
+    borderRadius: 'var(--lg-radius-md)',
     marginTop: '10px',
     fontFamily: 'monospace',
     fontSize: '13px',
-    ...shorthands.border('1px', 'solid', tokens.colorNeutralStroke3),
-    boxShadow: tokens.shadow2,
+    ...shorthands.border('1px', 'solid', 'var(--lg-border-color)'),
+    boxShadow: 'var(--lg-shadow-sm)',
   },
   pcgwNotes: {
     marginTop: '10px',
     fontSize: '13px',
-    color: tokens.colorNeutralForeground3,
+    color: 'var(--lg-text-secondary)',
     lineHeight: '1.4',
   },
-  // 双栏 Master-Detail 自适应高保真容器
+  // 双栏 Master-Detail 自适应容器
   container: {
     display: 'flex',
     gap: '24px',
@@ -231,7 +257,6 @@ const useStyles = makeStyles({
     alignItems: 'stretch',
     flexGrow: 1,
   },
-  // 左侧主列表栏 (占宽 2/3)
   masterCol: {
     flexGrow: 2,
     flexBasis: '0',
@@ -244,16 +269,16 @@ const useStyles = makeStyles({
     },
     paddingRight: '4px',
   },
-  // 右侧详情玻璃面板 (占宽 1/3)
+  // 右侧详情玻璃面板
   detailCol: {
     flexGrow: 1,
     flexBasis: '0',
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: tokens.colorNeutralBackground1,
-    borderRadius: tokens.borderRadiusXLarge,
-    ...shorthands.border('1px', 'solid', tokens.colorNeutralStroke3),
-    boxShadow: tokens.shadow16,
+    backgroundColor: 'var(--lg-bg-primary)',
+    borderRadius: 'var(--lg-radius-lg)',
+    ...shorthands.border('1px', 'solid', 'var(--lg-border-color)'),
+    boxShadow: 'var(--lg-shadow-elevated)',
     padding: '24px',
     overflowY: 'auto',
     scrollbarWidth: 'none',
@@ -263,7 +288,8 @@ const useStyles = makeStyles({
     position: 'sticky',
     top: '0',
     alignSelf: 'start',
-    backdropFilter: 'blur(20px)', // 精致磨砂模糊背景
+    backdropFilter: 'blur(var(--lg-blur-lg)) saturate(var(--lg-saturate))',
+    WebkitBackdropFilter: 'blur(var(--lg-blur-lg)) saturate(var(--lg-saturate))',
     transition: 'all 300ms cubic-bezier(0.1, 0.9, 0.2, 1)',
   },
   detailHeader: {
@@ -278,19 +304,19 @@ const useStyles = makeStyles({
   posterContainer: {
     width: '180px',
     height: '270px',
-    borderRadius: tokens.borderRadiusLarge,
-    boxShadow: tokens.shadow28,
+    borderRadius: 'var(--lg-radius-md)',
+    boxShadow: 'var(--lg-shadow-high)',
     overflow: 'hidden',
-    backgroundColor: tokens.colorNeutralBackground3,
+    backgroundColor: 'var(--lg-bg-secondary)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
-    ...shorthands.border('1px', 'solid', tokens.colorNeutralStroke1),
+    ...shorthands.border('1px', 'solid', 'var(--lg-border-color)'),
     transition: 'all 300ms ease',
     '&:hover': {
       transform: 'scale(1.03)',
-      boxShadow: tokens.shadow64,
+      boxShadow: 'var(--lg-shadow-high)',
     }
   },
   posterImage: {
@@ -301,11 +327,11 @@ const useStyles = makeStyles({
   detailTitle: {
     fontWeight: tokens.fontWeightSemibold,
     fontSize: '20px',
-    color: tokens.colorNeutralForeground1,
+    color: 'var(--lg-text-primary)',
   },
   detailSubtitle: {
     fontSize: '13px',
-    color: tokens.colorNeutralForeground3,
+    color: 'var(--lg-text-secondary)',
     fontFamily: 'monospace',
   },
   detailSection: {
@@ -317,17 +343,17 @@ const useStyles = makeStyles({
   detailSectionTitle: {
     fontWeight: tokens.fontWeightSemibold,
     fontSize: '14px',
-    color: tokens.colorNeutralForeground2,
+    color: 'var(--lg-text-secondary)',
   },
   detailPathCard: {
-    backgroundColor: tokens.colorNeutralBackground2,
+    backgroundColor: 'var(--lg-bg-secondary)',
     ...shorthands.padding('10px', '14px'),
-    borderRadius: tokens.borderRadiusMedium,
+    borderRadius: 'var(--lg-radius-md)',
     fontFamily: 'monospace',
     fontSize: '12px',
     wordBreak: 'break-all',
-    color: tokens.colorNeutralForeground3,
-    ...shorthands.border('1px', 'solid', tokens.colorNeutralStroke3),
+    color: 'var(--lg-text-secondary)',
+    ...shorthands.border('1px', 'solid', 'var(--lg-border-color)'),
   },
   detailActions: {
     display: 'flex',
@@ -337,9 +363,9 @@ const useStyles = makeStyles({
   },
   // 列表行选中微光高亮效果
   selectedRow: {
-    backgroundColor: tokens.colorBrandBackground2,
+    backgroundColor: 'var(--lg-brand-subtle)',
     '&:hover': {
-      backgroundColor: tokens.colorBrandBackground2Hover,
+      backgroundColor: 'var(--lg-brand-subtle)',
     }
   },
   // EXE 图标提取实时预览区
@@ -348,9 +374,9 @@ const useStyles = makeStyles({
     alignItems: 'center',
     gap: '12px',
     padding: '10px',
-    backgroundColor: tokens.colorNeutralBackground2,
-    borderRadius: tokens.borderRadiusMedium,
-    ...shorthands.border('1px', 'solid', tokens.colorNeutralStroke3),
+    backgroundColor: 'var(--lg-bg-secondary)',
+    borderRadius: 'var(--lg-radius-md)',
+    ...shorthands.border('1px', 'solid', 'var(--lg-border-color)'),
     marginTop: '8px',
   },
   exePreviewIcon: {
@@ -805,14 +831,15 @@ export default function GameDbPage() {
   return (
     <div className={styles.root}>
       <div className={styles.header}>
-        <Title1>游戏数据库</Title1>
+        <Title1 className={styles.title}>游戏数据库</Title1>
         <div className={styles.searchBox}>
-          <Search24Regular />
+          <Search24Regular style={{ color: 'var(--lg-text-secondary)' }} />
           <Input
             placeholder="搜索游戏名称或 exe..."
             value={search}
             onChange={(e) => handleSearch(e.target.value)}
             className={styles.searchInput}
+            style={{ backgroundColor: 'transparent', border: 'none', outline: 'none' }}
           />
         </div>
         <div className={styles.actions}>
@@ -897,7 +924,7 @@ export default function GameDbPage() {
                             <div
                               style={{
                                 fontSize: '12px',
-                                color: tokens.colorNeutralForeground3,
+                                color: 'var(--lg-text-secondary)',
                                 textOverflow: 'ellipsis',
                                 overflow: 'hidden',
                                 whiteSpace: 'nowrap',
@@ -913,7 +940,7 @@ export default function GameDbPage() {
                             style={{
                               fontFamily: 'monospace',
                               fontSize: '13px',
-                              color: tokens.colorNeutralForeground3,
+                              color: 'var(--lg-text-secondary)',
                               textOverflow: 'ellipsis',
                               overflow: 'hidden',
                               whiteSpace: 'nowrap',
@@ -926,7 +953,7 @@ export default function GameDbPage() {
                             <div
                               style={{
                                 fontSize: '12px',
-                                color: tokens.colorBrandForeground1,
+                                color: 'var(--lg-brand)',
                               }}
                             >
                               Steam ID: {entry.steam_appid}
@@ -1009,7 +1036,7 @@ export default function GameDbPage() {
                         width: '100%',
                         height: '100%',
                         gap: '8px',
-                        color: tokens.colorNeutralForeground4,
+                        color: 'var(--lg-text-secondary)',
                       }}
                     >
                       <Image24Regular style={{ fontSize: '48px', width: '48px', height: '48px' }} />
@@ -1025,7 +1052,7 @@ export default function GameDbPage() {
                 <div className={styles.detailSection}>
                   <div className={styles.detailSectionTitle}>存档路径模板</div>
                   {selectedEntry.save_paths.length === 0 ? (
-                    <div style={{ color: tokens.colorNeutralForeground4, fontSize: '13px' }}>未配置路径</div>
+                    <div style={{ color: 'var(--lg-text-secondary)', fontSize: '13px' }}>未配置路径</div>
                   ) : (
                     selectedEntry.save_paths.map((path: string, idx: number) => (
                       <div key={idx} className={styles.detailPathCard}>
@@ -1065,7 +1092,7 @@ export default function GameDbPage() {
                 {selectedEntry.notes && (
                   <div className={styles.detailSection}>
                     <div className={styles.detailSectionTitle}>备注说明</div>
-                    <div style={{ fontSize: '13px', color: tokens.colorNeutralForeground3, lineHeight: '1.5' }}>
+                    <div style={{ fontSize: '13px', color: 'var(--lg-text-secondary)', lineHeight: '1.5' }}>
                       {selectedEntry.notes}
                     </div>
                   </div>
@@ -1099,7 +1126,7 @@ export default function GameDbPage() {
                 </div>
               </>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: tokens.colorNeutralForeground4 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--lg-text-secondary)' }}>
                 <Games24Regular style={{ fontSize: '48px', width: '48px', height: '48px', marginBottom: '12px' }} />
                 <span>请选择左侧游戏查看详情</span>
               </div>
@@ -1113,7 +1140,7 @@ export default function GameDbPage() {
         open={editOpen}
         onOpenChange={(_, data) => !data.open && setEditOpen(false)}
       >
-        <DialogSurface>
+        <DialogSurface style={{ backgroundColor: 'var(--lg-bg-elevated)', backdropFilter: 'blur(var(--lg-blur-lg)) saturate(var(--lg-saturate))', WebkitBackdropFilter: 'blur(var(--lg-blur-lg)) saturate(var(--lg-saturate))', border: '1px solid var(--lg-border-color)', borderRadius: 'var(--lg-radius-xl)', boxShadow: 'var(--lg-shadow-high)' }}>
           <DialogBody>
             <DialogTitle>
               {isEditing ? '编辑条目' : '添加条目'}
@@ -1215,8 +1242,8 @@ export default function GameDbPage() {
                         alt="EXE icon preview"
                       />
                       <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ fontSize: '12px', fontWeight: 600, color: tokens.colorNeutralForeground2 }}>已提取高清原装图标</span>
-                        <span style={{ fontSize: '11px', color: tokens.colorNeutralForeground4 }}>保存后该图标将被永久缓存在数据库中</span>
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--lg-text-primary)' }}>已提取高清原装图标</span>
+                        <span style={{ fontSize: '11px', color: 'var(--lg-text-secondary)' }}>保存后该图标将被永久缓存在数据库中</span>
                       </div>
                       <Button
                         size="small"
@@ -1262,7 +1289,7 @@ export default function GameDbPage() {
         open={importOpen}
         onOpenChange={(_, data) => !data.open && setImportOpen(false)}
       >
-        <DialogSurface>
+        <DialogSurface style={{ backgroundColor: 'var(--lg-bg-elevated)', backdropFilter: 'blur(var(--lg-blur-lg)) saturate(var(--lg-saturate))', WebkitBackdropFilter: 'blur(var(--lg-blur-lg)) saturate(var(--lg-saturate))', border: '1px solid var(--lg-border-color)', borderRadius: 'var(--lg-radius-xl)', boxShadow: 'var(--lg-shadow-high)' }}>
           <DialogBody>
             <DialogTitle>导入数据库</DialogTitle>
             <DialogContent>
@@ -1296,7 +1323,7 @@ export default function GameDbPage() {
         open={pcgwOpen}
         onOpenChange={(_, data) => !data.open && setPcgwOpen(false)}
       >
-        <DialogSurface>
+        <DialogSurface style={{ backgroundColor: 'var(--lg-bg-elevated)', backdropFilter: 'blur(var(--lg-blur-lg)) saturate(var(--lg-saturate))', WebkitBackdropFilter: 'blur(var(--lg-blur-lg)) saturate(var(--lg-saturate))', border: '1px solid var(--lg-border-color)', borderRadius: 'var(--lg-radius-xl)', boxShadow: 'var(--lg-shadow-high)' }}>
           <DialogBody>
             <DialogTitle>从 PCGamingWiki 搜索</DialogTitle>
             <DialogContent>
@@ -1347,7 +1374,7 @@ export default function GameDbPage() {
                           <div
                             style={{
                               fontSize: '12px',
-                              color: tokens.colorNeutralForeground3,
+                              color: 'var(--lg-text-secondary)',
                             }}
                           >
                             {r.steam_appid ? `Steam AppID: ${r.steam_appid}` : '暂无 AppID'}
@@ -1418,7 +1445,7 @@ export default function GameDbPage() {
         open={exportOpen}
         onOpenChange={(_, data) => !data.open && setExportOpen(false)}
       >
-        <DialogSurface>
+        <DialogSurface style={{ backgroundColor: 'var(--lg-bg-elevated)', backdropFilter: 'blur(var(--lg-blur-lg)) saturate(var(--lg-saturate))', WebkitBackdropFilter: 'blur(var(--lg-blur-lg)) saturate(var(--lg-saturate))', border: '1px solid var(--lg-border-color)', borderRadius: 'var(--lg-radius-xl)', boxShadow: 'var(--lg-shadow-high)' }}>
           <DialogBody>
             <DialogTitle>导出数据库</DialogTitle>
             <DialogContent>

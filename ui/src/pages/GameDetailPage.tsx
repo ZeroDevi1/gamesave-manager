@@ -2,7 +2,6 @@
 import { useParams } from 'react-router-dom'
 import {
   makeStyles,
-  tokens,
   Title1,
   Title2,
   Button,
@@ -59,25 +58,35 @@ const useStyles = makeStyles({
     display: 'flex',
     gap: '20px',
     alignItems: 'flex-start',
+    // Liquid Glass 信息面板
+    backgroundColor: 'var(--lg-bg-primary)',
+    backdropFilter: 'blur(var(--lg-blur-md)) saturate(var(--lg-saturate))',
+    WebkitBackdropFilter: 'blur(var(--lg-blur-md)) saturate(var(--lg-saturate))',
+    border: '1px solid var(--lg-border-color)',
+    borderRadius: 'var(--lg-radius-lg)',
+    boxShadow: 'var(--lg-shadow-sm)',
+    padding: '18px',
   },
   logo: {
     width: '120px',
     height: '120px',
-    borderRadius: tokens.borderRadiusLarge,
+    borderRadius: 'var(--lg-radius-md)',
     objectFit: 'cover',
-    backgroundColor: tokens.colorNeutralBackground1,
+    backgroundColor: 'var(--lg-bg-secondary)',
+    boxShadow: 'var(--lg-shadow-sm)',
   },
   placeholder: {
     width: '120px',
     height: '120px',
-    borderRadius: tokens.borderRadiusLarge,
-    backgroundColor: tokens.colorBrandBackground,
+    borderRadius: 'var(--lg-radius-md)',
+    background: 'linear-gradient(135deg, var(--lg-brand-subtle) 0%, var(--lg-brand) 100%)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    color: tokens.colorNeutralForegroundOnBrand,
+    color: 'var(--lg-text-on-brand)',
     fontSize: '48px',
     fontWeight: 'bold',
+    boxShadow: 'var(--lg-shadow-sm)',
   },
   info: {
     display: 'flex',
@@ -91,11 +100,16 @@ const useStyles = makeStyles({
     gap: '4px',
     fontFamily: 'monospace',
     fontSize: '13px',
-    color: tokens.colorNeutralForeground3,
+    color: 'var(--lg-text-secondary)',
   },
   section: {
-    backgroundColor: tokens.colorNeutralBackground1,
-    borderRadius: tokens.borderRadiusMedium,
+    // Liquid Glass 分区面板
+    backgroundColor: 'var(--lg-bg-primary)',
+    backdropFilter: 'blur(var(--lg-blur-md)) saturate(var(--lg-saturate))',
+    WebkitBackdropFilter: 'blur(var(--lg-blur-md)) saturate(var(--lg-saturate))',
+    border: '1px solid var(--lg-border-color)',
+    borderRadius: 'var(--lg-radius-lg)',
+    boxShadow: 'var(--lg-shadow-sm)',
     padding: '16px',
   },
   sectionHeader: {
@@ -104,20 +118,23 @@ const useStyles = makeStyles({
     justifyContent: 'space-between',
     marginBottom: '12px',
   },
+  sectionTitle: {
+    color: 'var(--lg-text-primary)',
+  },
   fileNameCell: {
     minWidth: '360px',
     wordBreak: 'break-all',
   },
-  // 表格行 hover 高亮效果
+  // 表格行 hover 高亮效果（玻璃质感）
   tableRow: {
     transition: 'background-color 0.15s ease',
     ':hover': {
-      backgroundColor: tokens.colorNeutralBackground1Hover,
+      backgroundColor: 'var(--lg-bg-interactive-hover)',
     },
   },
   // 斑马纹交替背景
   tableRowEven: {
-    backgroundColor: tokens.colorNeutralBackground2,
+    backgroundColor: 'var(--lg-bg-secondary)',
   },
   // 空状态居中展示
   emptyState: {
@@ -127,7 +144,7 @@ const useStyles = makeStyles({
     justifyContent: 'center',
     padding: '40px 0',
     gap: '12px',
-    color: tokens.colorNeutralForeground3,
+    color: 'var(--lg-text-secondary)',
   },
   emptyIcon: {
     fontSize: '36px',
@@ -258,7 +275,7 @@ export default function GameDetailPage() {
         <div className={styles.info}>
           <Title1>{game.name}</Title1>
           <div className={styles.pathList}>
-            <div style={{ fontWeight: 600, color: tokens.colorNeutralForeground1 }}>存档路径：</div>
+            <div style={{ fontWeight: 600, color: 'var(--lg-text-primary)' }}>存档路径：</div>
             {game.save_paths.map((p, i) => (
               <div key={i}>{p}</div>
             ))}
@@ -298,7 +315,7 @@ export default function GameDetailPage() {
       {/* 本地备份历史（第一位） */}
       <div className={styles.section}>
         <div className={styles.sectionHeader}>
-          <Title2>本地备份历史</Title2>
+          <Title2 className={styles.sectionTitle}>本地备份历史</Title2>
           <Button size="small" onClick={() => backup.fetchHistory()}>
             刷新
           </Button>
@@ -355,7 +372,7 @@ export default function GameDetailPage() {
       {/* 远程备份 */}
       <div className={styles.section}>
         <div className={styles.sectionHeader}>
-          <Title2>{`远程备份（${remoteStorageLabel}）`}</Title2>
+          <Title2 className={styles.sectionTitle}>{`远程备份（${remoteStorageLabel}）`}</Title2>
           <Button size="small" onClick={() => backup.fetchRemoteBackups()}>
             刷新
           </Button>
@@ -408,7 +425,7 @@ export default function GameDetailPage() {
       {/* 本地存档文件（移到最下方） */}
       <div className={styles.section}>
         <div className={styles.sectionHeader}>
-          <Title2>本地存档文件</Title2>
+          <Title2 className={styles.sectionTitle}>本地存档文件</Title2>
           <Button size="small" onClick={() => scanGameSaves(game.id).then(setSaves)}>
             刷新
           </Button>

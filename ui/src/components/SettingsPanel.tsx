@@ -6,7 +6,6 @@ import {
   RadioGroup,
   Radio,
   makeStyles,
-  tokens,
   Spinner,
   MessageBar,
   MessageBarBody,
@@ -38,13 +37,19 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: '12px',
     padding: '16px',
-    backgroundColor: tokens.colorNeutralBackground1,
-    borderRadius: tokens.borderRadiusMedium,
+    // Liquid Glass 设置分区
+    backgroundColor: 'var(--lg-bg-primary)',
+    backdropFilter: 'blur(var(--lg-blur-md)) saturate(var(--lg-saturate))',
+    WebkitBackdropFilter: 'blur(var(--lg-blur-md)) saturate(var(--lg-saturate))',
+    border: '1px solid var(--lg-border-color)',
+    borderRadius: 'var(--lg-radius-lg)',
+    boxShadow: 'var(--lg-shadow-sm)',
   },
   sectionTitle: {
     fontSize: '18px',
     fontWeight: '600',
     marginBottom: '4px',
+    color: 'var(--lg-text-primary)',
   },
   row: {
     display: 'flex',
@@ -593,25 +598,34 @@ export default function SettingsPanel() {
             )}
               </>
             )}
-            {/* 夸克 TV 扫码弹窗 */}
+            {/* 夸克 TV 扫码弹窗：Liquid Glass 模态框 */}
             {tvQrOpen && (
               <div style={{
                 position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex',
+                display: 'flex',
                 alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+                // 玻璃磨砂遮罩
+                backgroundColor: 'var(--lg-bg-scrim)',
+                backdropFilter: 'blur(var(--lg-blur-xl))',
+                WebkitBackdropFilter: 'blur(var(--lg-blur-xl))',
               }}>
                 <div style={{
-                  backgroundColor: tokens.colorNeutralBackground1,
-                  borderRadius: '12px', padding: '24px', textAlign: 'center',
+                  backgroundColor: 'var(--lg-bg-elevated)',
+                  backdropFilter: 'blur(var(--lg-blur-lg)) saturate(var(--lg-saturate))',
+                  WebkitBackdropFilter: 'blur(var(--lg-blur-lg)) saturate(var(--lg-saturate))',
+                  border: '1px solid var(--lg-border-color)',
+                  borderRadius: 'var(--lg-radius-xl)',
+                  boxShadow: 'var(--lg-shadow-high)',
+                  padding: '24px', textAlign: 'center',
                   maxWidth: '380px',
                 }}>
-                  <h3 style={{ margin: '0 0 12px' }}>夸克 TV 扫码登录</h3>
+                  <h3 style={{ margin: '0 0 12px', color: 'var(--lg-text-primary)' }}>夸克 TV 扫码登录</h3>
                   {tvQrImage ? (
-                    <img src={tvQrImage} alt="QR Code" style={{ width: '280px', height: '280px' }} />
+                    <img src={tvQrImage} alt="QR Code" style={{ width: '280px', height: '280px', borderRadius: 'var(--lg-radius-md)' }} />
                   ) : (
                     <Spinner label="加载二维码中..." />
                   )}
-                  <p style={{ color: tokens.colorNeutralForeground3, fontSize: '13px', margin: '12px 0' }}>
+                  <p style={{ color: 'var(--lg-text-secondary)', fontSize: '13px', margin: '12px 0' }}>
                     {tvQrPolling ? '请使用夸克 App 扫描二维码授权' : '正在等待授权...'}
                   </p>
                   <Button onClick={() => setTvQrOpen(false)}>取消</Button>

@@ -1,0 +1,457 @@
+/**
+ * Liquid Glass Design System — 全局 CSS 令牌与工具类
+ *
+ * 设计原则：
+ * 1. 半透明表面通过 backdrop-filter 呈现层叠深度
+ * 2. 元素悬浮在不同 z 层并带有拟物阴影
+ * 3. 玻璃色调随底层内容轻微变化（saturate）
+ * 4. 边框纤细，以形状和模糊定义边界
+ * 5. 动画使用 spring 缓动，营造物理惯性感
+ *
+ * 使用方式：在 index.css 中 @import 本文件，然后在组件 className 中使用 .lg-* 工具类
+ * 或引用 --lg-* CSS 变量。
+ */
+
+/* ======================== 基础模式：浅色 ======================== */
+:root {
+  color-scheme: light;
+
+  /* 玻璃背景层级 */
+  --lg-bg-base: #f3f3f3;
+  --lg-bg-primary: rgba(255, 255, 255, 0.72);
+  --lg-bg-secondary: rgba(255, 255, 255, 0.50);
+  --lg-bg-elevated: rgba(255, 255, 255, 0.85);
+  --lg-bg-toolbar: rgba(255, 255, 255, 0.65);
+  --lg-bg-interactive: rgba(255, 255, 255, 0.45);
+  --lg-bg-interactive-hover: rgba(255, 255, 255, 0.62);
+  --lg-bg-pressed: rgba(255, 255, 255, 0.32);
+  --lg-bg-scrim: rgba(0, 0, 0, 0.28);
+
+  /* 文本颜色 */
+  --lg-text-primary: rgba(0, 0, 0, 0.89);
+  --lg-text-secondary: rgba(0, 0, 0, 0.55);
+  --lg-text-on-brand: #ffffff;
+
+  /* 品牌色（与 Fluent 品牌色近似，保证一致性） */
+  --lg-brand: #0f6cbd;
+  --lg-brand-hover: #115ea3;
+  --lg-brand-active: #0c3b5e;
+  --lg-brand-subtle: rgba(15, 108, 189, 0.12);
+
+  /* 边框 */
+  --lg-border-color: rgba(0, 0, 0, 0.08);
+  --lg-border-subtle: rgba(0, 0, 0, 0.05);
+  --lg-border-hover: rgba(0, 0, 0, 0.14);
+  --lg-border-focus: rgba(15, 108, 189, 0.60);
+
+  /* 阴影 */
+  --lg-shadow-color: rgba(0, 0, 0, 0.08);
+  --lg-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --lg-shadow-elevated:
+    0 8px 24px var(--lg-shadow-color),
+    0 2px 6px rgba(0, 0, 0, 0.04);
+  --lg-shadow-high:
+    0 16px 48px var(--lg-shadow-color),
+    0 4px 12px rgba(0, 0, 0, 0.06);
+  --lg-shadow-inset: inset 0 1px 1px rgba(255, 255, 255, 0.35);
+
+  /* 模糊 */
+  --lg-blur-sm: 8px;
+  --lg-blur-md: 20px;
+  --lg-blur-lg: 32px;
+  --lg-blur-xl: 48px;
+
+  /* 饱和度增强（让底层颜色透过玻璃更鲜艳） */
+  --lg-saturate: 1.6;
+
+  /* 圆角 */
+  --lg-radius-sm: 6px;
+  --lg-radius-md: 10px;
+  --lg-radius-lg: 16px;
+  --lg-radius-xl: 24px;
+
+  /* 动画 */
+  --lg-duration-fast: 150ms;
+  --lg-duration-normal: 250ms;
+  --lg-duration-slow: 350ms;
+  --lg-easing-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --lg-easing-smooth: cubic-bezier(0.1, 0.9, 0.2, 1);
+}
+
+/* ======================== 系统暗色偏好 ======================== */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --lg-bg-base: #1c1c1c;
+    --lg-bg-primary: rgba(45, 45, 45, 0.62);
+    --lg-bg-secondary: rgba(45, 45, 45, 0.42);
+    --lg-bg-elevated: rgba(55, 55, 55, 0.75);
+    --lg-bg-toolbar: rgba(35, 35, 35, 0.55);
+    --lg-bg-interactive: rgba(255, 255, 255, 0.10);
+    --lg-bg-interactive-hover: rgba(255, 255, 255, 0.16);
+    --lg-bg-pressed: rgba(255, 255, 255, 0.07);
+    --lg-bg-scrim: rgba(0, 0, 0, 0.55);
+
+    --lg-text-primary: rgba(255, 255, 255, 0.92);
+    --lg-text-secondary: rgba(255, 255, 255, 0.58);
+
+    --lg-brand: #47b2ff;
+    --lg-brand-hover: #62bef5;
+    --lg-brand-active: #95d6ff;
+    --lg-brand-subtle: rgba(71, 178, 255, 0.16);
+
+    --lg-border-color: rgba(255, 255, 255, 0.10);
+    --lg-border-subtle: rgba(255, 255, 255, 0.06);
+    --lg-border-hover: rgba(255, 255, 255, 0.18);
+    --lg-border-focus: rgba(71, 178, 255, 0.60);
+
+    --lg-shadow-color: rgba(0, 0, 0, 0.40);
+    --lg-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
+    --lg-shadow-inset: inset 0 1px 1px rgba(255, 255, 255, 0.08);
+  }
+}
+
+/* ======================== 应用强制模式 ======================== */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --lg-bg-base: #f3f3f3;
+  --lg-bg-primary: rgba(255, 255, 255, 0.72);
+  --lg-bg-secondary: rgba(255, 255, 255, 0.50);
+  --lg-bg-elevated: rgba(255, 255, 255, 0.85);
+  --lg-bg-toolbar: rgba(255, 255, 255, 0.65);
+  --lg-bg-interactive: rgba(255, 255, 255, 0.45);
+  --lg-bg-interactive-hover: rgba(255, 255, 255, 0.62);
+  --lg-bg-pressed: rgba(255, 255, 255, 0.32);
+  --lg-bg-scrim: rgba(0, 0, 0, 0.28);
+
+  --lg-text-primary: rgba(0, 0, 0, 0.89);
+  --lg-text-secondary: rgba(0, 0, 0, 0.55);
+
+  --lg-brand: #0f6cbd;
+  --lg-brand-hover: #115ea3;
+  --lg-brand-active: #0c3b5e;
+  --lg-brand-subtle: rgba(15, 108, 189, 0.12);
+
+  --lg-border-color: rgba(0, 0, 0, 0.08);
+  --lg-border-subtle: rgba(0, 0, 0, 0.05);
+  --lg-border-hover: rgba(0, 0, 0, 0.14);
+  --lg-border-focus: rgba(15, 108, 189, 0.60);
+
+  --lg-shadow-color: rgba(0, 0, 0, 0.08);
+  --lg-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --lg-shadow-inset: inset 0 1px 1px rgba(255, 255, 255, 0.35);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --lg-bg-base: #1c1c1c;
+  --lg-bg-primary: rgba(45, 45, 45, 0.62);
+  --lg-bg-secondary: rgba(45, 45, 45, 0.42);
+  --lg-bg-elevated: rgba(55, 55, 55, 0.75);
+  --lg-bg-toolbar: rgba(35, 35, 35, 0.55);
+  --lg-bg-interactive: rgba(255, 255, 255, 0.10);
+  --lg-bg-interactive-hover: rgba(255, 255, 255, 0.16);
+  --lg-bg-pressed: rgba(255, 255, 255, 0.07);
+  --lg-bg-scrim: rgba(0, 0, 0, 0.55);
+
+  --lg-text-primary: rgba(255, 255, 255, 0.92);
+  --lg-text-secondary: rgba(255, 255, 255, 0.58);
+
+  --lg-brand: #47b2ff;
+  --lg-brand-hover: #62bef5;
+  --lg-brand-active: #95d6ff;
+  --lg-brand-subtle: rgba(71, 178, 255, 0.16);
+
+  --lg-border-color: rgba(255, 255, 255, 0.10);
+  --lg-border-subtle: rgba(255, 255, 255, 0.06);
+  --lg-border-hover: rgba(255, 255, 255, 0.18);
+  --lg-border-focus: rgba(71, 178, 255, 0.60);
+
+  --lg-shadow-color: rgba(0, 0, 0, 0.40);
+  --lg-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
+  --lg-shadow-inset: inset 0 1px 1px rgba(255, 255, 255, 0.08);
+}
+
+/* ======================== 工具类 ======================== */
+
+/* 玻璃卡片 */
+.lg-card {
+  background: var(--lg-bg-primary);
+  backdrop-filter: blur(var(--lg-blur-md)) saturate(var(--lg-saturate));
+  -webkit-backdrop-filter: blur(var(--lg-blur-md)) saturate(var(--lg-saturate));
+  border: 1px solid var(--lg-border-color);
+  border-radius: var(--lg-radius-lg);
+  box-shadow: var(--lg-shadow-elevated), var(--lg-shadow-inset);
+  transition:
+    transform var(--lg-duration-normal) var(--lg-easing-spring),
+    box-shadow var(--lg-duration-normal) var(--lg-easing-spring),
+    border-color var(--lg-duration-fast) ease;
+}
+
+.lg-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--lg-shadow-high), var(--lg-shadow-inset);
+  border-color: var(--lg-border-hover);
+}
+
+/* 玻璃面板（内容区域） */
+.lg-panel {
+  background: var(--lg-bg-primary);
+  backdrop-filter: blur(var(--lg-blur-md)) saturate(var(--lg-saturate));
+  -webkit-backdrop-filter: blur(var(--lg-blur-md)) saturate(var(--lg-saturate));
+  border: 1px solid var(--lg-border-color);
+  border-radius: var(--lg-radius-lg);
+  box-shadow: var(--lg-shadow-sm), var(--lg-shadow-inset);
+}
+
+.lg-panel-elevated {
+  background: var(--lg-bg-elevated);
+  backdrop-filter: blur(var(--lg-blur-lg)) saturate(var(--lg-saturate));
+  -webkit-backdrop-filter: blur(var(--lg-blur-lg)) saturate(var(--lg-saturate));
+  border: 1px solid var(--lg-border-color);
+  border-radius: var(--lg-radius-xl);
+  box-shadow: var(--lg-shadow-high), var(--lg-shadow-inset);
+}
+
+/* 玻璃工具栏/侧边栏 */
+.lg-toolbar {
+  background: var(--lg-bg-toolbar);
+  backdrop-filter: blur(var(--lg-blur-lg)) saturate(var(--lg-saturate));
+  -webkit-backdrop-filter: blur(var(--lg-blur-lg)) saturate(var(--lg-saturate));
+  border-bottom: 1px solid var(--lg-border-subtle);
+}
+
+.lg-sidebar {
+  background: var(--lg-bg-toolbar);
+  backdrop-filter: blur(var(--lg-blur-lg)) saturate(var(--lg-saturate));
+  -webkit-backdrop-filter: blur(var(--lg-blur-lg)) saturate(var(--lg-saturate));
+  border-right: 1px solid var(--lg-border-subtle);
+}
+
+/* 玻璃按钮 */
+.lg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: var(--lg-bg-interactive);
+  backdrop-filter: blur(var(--lg-blur-sm));
+  -webkit-backdrop-filter: blur(var(--lg-blur-sm));
+  border: 1px solid var(--lg-border-color);
+  border-radius: var(--lg-radius-md);
+  color: var(--lg-text-primary);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--lg-duration-fast) ease,
+    transform var(--lg-duration-fast) var(--lg-easing-spring),
+    box-shadow var(--lg-duration-fast) ease,
+    border-color var(--lg-duration-fast) ease;
+}
+
+.lg-btn:hover {
+  background: var(--lg-bg-interactive-hover);
+  border-color: var(--lg-border-hover);
+}
+
+.lg-btn:active {
+  transform: scale(0.97);
+  background: var(--lg-bg-pressed);
+}
+
+.lg-btn-primary {
+  background: var(--lg-brand);
+  color: var(--lg-text-on-brand);
+  border-color: transparent;
+}
+
+.lg-btn-primary:hover {
+  background: var(--lg-brand-hover);
+}
+
+.lg-btn-primary:active {
+  background: var(--lg-brand-active);
+}
+
+/* 玻璃输入框 */
+.lg-input {
+  padding: 7px 12px;
+  background: var(--lg-bg-interactive);
+  backdrop-filter: blur(var(--lg-blur-sm));
+  -webkit-backdrop-filter: blur(var(--lg-blur-sm));
+  border: 1px solid var(--lg-border-color);
+  border-radius: var(--lg-radius-md);
+  color: var(--lg-text-primary);
+  outline: none;
+  transition:
+    background var(--lg-duration-fast) ease,
+    border-color var(--lg-duration-fast) ease,
+    box-shadow var(--lg-duration-fast) ease;
+}
+
+.lg-input:focus {
+  background: var(--lg-bg-interactive-hover);
+  border-color: var(--lg-border-focus);
+  box-shadow: 0 0 0 3px var(--lg-brand-subtle);
+}
+
+.lg-input::placeholder {
+  color: var(--lg-text-secondary);
+}
+
+/* 玻璃遮罩与模态框 */
+.lg-scrim {
+  background: var(--lg-bg-scrim);
+  backdrop-filter: blur(var(--lg-blur-xl));
+  -webkit-backdrop-filter: blur(var(--lg-blur-xl));
+}
+
+.lg-modal {
+  background: var(--lg-bg-elevated);
+  backdrop-filter: blur(var(--lg-blur-lg)) saturate(var(--lg-saturate));
+  -webkit-backdrop-filter: blur(var(--lg-blur-lg)) saturate(var(--lg-saturate));
+  border: 1px solid var(--lg-border-color);
+  border-radius: var(--lg-radius-xl);
+  box-shadow: var(--lg-shadow-high);
+}
+
+/* 表格行玻璃效果 */
+.lg-table-row {
+  transition: background-color 0.15s ease;
+}
+
+.lg-table-row:hover {
+  background-color: var(--lg-bg-interactive-hover);
+}
+
+.lg-table-row-even {
+  background-color: var(--lg-bg-secondary);
+}
+
+/* 选中态微光 */
+.lg-selected {
+  position: relative;
+  background: var(--lg-bg-interactive);
+}
+
+.lg-selected::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--lg-brand);
+}
+
+/* 细滚动条（玻璃风格） */
+.lg-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.lg-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.lg-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--lg-border-hover);
+  border-radius: 4px;
+}
+
+.lg-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--lg-text-secondary);
+}
+
+.lg-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--lg-border-hover) transparent;
+}
+
+/* 进入动画 */
+@keyframes lg-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.lg-animate-in {
+  animation: lg-enter var(--lg-duration-normal) var(--lg-easing-spring) both;
+}
+
+/* 页面路由切换动画 */
+@keyframes lg-page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.lg-page-enter {
+  animation: lg-page-enter 300ms var(--lg-easing-spring) both;
+}
+
+/* 空状态图标 */
+.lg-empty-icon {
+  font-size: 48px;
+  opacity: 0.4;
+  color: var(--lg-text-secondary);
+}
+
+/* 辅助排版 */
+.lg-text-primary {
+  color: var(--lg-text-primary);
+}
+
+.lg-text-secondary {
+  color: var(--lg-text-secondary);
+}
+
+/* 减少动效（无障碍） */
+@media (prefers-reduced-motion: reduce) {
+  .lg-card,
+  .lg-btn,
+  .lg-input,
+  .lg-panel,
+  .lg-panel-elevated {
+    transition: none;
+  }
+
+  .lg-card:hover {
+    transform: none;
+  }
+
+  .lg-animate-in,
+  .lg-page-enter {
+    animation: none;
+  }
+}
+
+/* 高对比度（无障碍） */
+@media (prefers-contrast: high) {
+  .lg-card,
+  .lg-panel,
+  .lg-panel-elevated,
+  .lg-toolbar,
+  .lg-sidebar,
+  .lg-modal {
+    background: var(--lg-bg-base);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-width: 2px;
+  }
+}

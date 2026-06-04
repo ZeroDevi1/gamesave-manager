@@ -1,7 +1,6 @@
 // pages/HomePage.tsx - 首页：游戏卡片网格 + 添加游戏（放大布局 + 隐藏滚动条）
 import {
   makeStyles,
-  tokens,
   Title1,
   Button,
   Input,
@@ -50,6 +49,17 @@ const useStyles = makeStyles({
     justifyContent: 'space-between',
     gap: '16px',
     flexShrink: 0,
+    padding: '14px 18px',
+    // Liquid Glass 标题栏面板
+    backgroundColor: 'var(--lg-bg-primary)',
+    backdropFilter: 'blur(var(--lg-blur-md)) saturate(var(--lg-saturate))',
+    WebkitBackdropFilter: 'blur(var(--lg-blur-md)) saturate(var(--lg-saturate))',
+    border: '1px solid var(--lg-border-color)',
+    borderRadius: 'var(--lg-radius-lg)',
+    boxShadow: 'var(--lg-shadow-sm)',
+  },
+  title: {
+    color: 'var(--lg-text-primary)',
   },
   searchBox: {
     display: 'flex',
@@ -57,6 +67,14 @@ const useStyles = makeStyles({
     gap: '8px',
     flexGrow: 1,
     maxWidth: '400px',
+    padding: '4px 10px',
+    backgroundColor: 'var(--lg-bg-interactive)',
+    border: '1px solid var(--lg-border-color)',
+    borderRadius: 'var(--lg-radius-md)',
+    ':hover': {
+      backgroundColor: 'var(--lg-bg-interactive-hover)',
+      border: '1px solid var(--lg-border-hover)',
+    },
   },
   grid: {
     display: 'grid',
@@ -70,7 +88,7 @@ const useStyles = makeStyles({
     alignItems: 'center',
     justifyContent: 'center',
     textAlign: 'center',
-    color: tokens.colorNeutralForeground3,
+    color: 'var(--lg-text-secondary)',
     padding: '80px 0',
     gap: '16px',
   },
@@ -133,14 +151,19 @@ export default function HomePage() {
   return (
     <div className={styles.root}>
       <div className={styles.header}>
-        <Title1>游戏存档管理</Title1>
+        <Title1 className={styles.title}>游戏存档管理</Title1>
         <div className={styles.searchBox}>
-          <Search24Regular />
+          <Search24Regular style={{ color: 'var(--lg-text-secondary)' }} />
           <Input
             placeholder="搜索游戏..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ flexGrow: 1 }}
+            style={{
+              flexGrow: 1,
+              backgroundColor: 'transparent',
+              border: 'none',
+              outline: 'none',
+            }}
           />
         </div>
         <Button
@@ -216,10 +239,19 @@ export default function HomePage() {
 
       {/* 添加游戏弹窗 */}
       <Dialog open={addOpen} onOpenChange={(_, data) => !data.open && setAddOpen(false)}>
-        <DialogSurface>
+        <DialogSurface
+          style={{
+            backgroundColor: 'var(--lg-bg-elevated)',
+            backdropFilter: 'blur(var(--lg-blur-lg)) saturate(var(--lg-saturate))',
+            WebkitBackdropFilter: 'blur(var(--lg-blur-lg)) saturate(var(--lg-saturate))',
+            border: '1px solid var(--lg-border-color)',
+            borderRadius: 'var(--lg-radius-xl)',
+            boxShadow: 'var(--lg-shadow-high)',
+          }}
+        >
           <DialogBody>
-            <DialogTitle>添加游戏</DialogTitle>
-            <DialogContent>
+            <DialogTitle style={{ color: 'var(--lg-text-primary)' }}>添加游戏</DialogTitle>
+            <DialogContent style={{ color: 'var(--lg-text-primary)' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div>
                   <label>游戏名称</label>

@@ -13,6 +13,10 @@ const useStyles = makeStyles({
       display: 'none',
     },
   },
+  title: {
+    marginBottom: '20px',
+    color: 'var(--lg-text-primary)',
+  },
 })
 
 export default function SettingsPage() {
@@ -20,7 +24,7 @@ export default function SettingsPage() {
 
   return (
     <div className={styles.root}>
-      <Title1 style={{ marginBottom: '20px' }}>设置</Title1>
+      <Title1 className={styles.title}>设置</Title1>
       <SettingsPanel />
     </div>
   )

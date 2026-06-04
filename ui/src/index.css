@@ -1,4 +1,6 @@
-/* 全局样式重置 */
+/* 全局样式重置 + Liquid Glass 设计系统导入 */
+@import "./styles/liquid-glass.css";
+
 html, body, #root {
   height: 100%;
   margin: 0;
@@ -11,7 +13,25 @@ html, body, #root {
   text-rendering: optimizeLegibility;
 }
 
-/* Fluent UI 滚动条美化 */
+/* 全局背景：柔和渐变，让玻璃效果有层次感 */
+body {
+  background:
+    radial-gradient(ellipse at 10% 10%, rgba(15, 108, 189, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 90% 80%, rgba(71, 178, 255, 0.06) 0%, transparent 50%),
+    var(--lg-bg-base);
+  color: var(--lg-text-primary);
+  transition: background-color var(--lg-duration-normal) ease;
+}
+
+/* 深色模式下背景色调微调 */
+[data-theme="dark"] body {
+  background:
+    radial-gradient(ellipse at 10% 10%, rgba(71, 178, 255, 0.10) 0%, transparent 50%),
+    radial-gradient(ellipse at 90% 80%, rgba(15, 108, 189, 0.08) 0%, transparent 50%),
+    var(--lg-bg-base);
+}
+
+/* Fluent UI 滚动条美化：复用 Liquid Glass 滚动条风格 */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -22,12 +42,12 @@ html, body, #root {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--colorNeutralStroke1);
+  background: var(--lg-border-hover);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--colorNeutralStroke1Hover);
+  background: var(--lg-text-secondary);
 }
 
 /* 页面过渡动画：路由切换时内容区淡入 + 上移 8px */

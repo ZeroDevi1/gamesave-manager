@@ -39,6 +39,29 @@ const useStyles = makeStyles({
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
+    padding: '10px',
+    backgroundColor: 'var(--lg-bg-secondary)',
+    border: '1px solid var(--lg-border-color)',
+    borderRadius: 'var(--lg-radius-md)',
+  },
+  pathInput: {
+    backgroundColor: 'transparent',
+    border: 'none',
+  },
+  tableCard: {
+    backgroundColor: 'var(--lg-bg-primary)',
+    backdropFilter: 'blur(var(--lg-blur-md)) saturate(var(--lg-saturate))',
+    WebkitBackdropFilter: 'blur(var(--lg-blur-md)) saturate(var(--lg-saturate))',
+    border: '1px solid var(--lg-border-color)',
+    borderRadius: 'var(--lg-radius-lg)',
+    boxShadow: 'var(--lg-shadow-sm)',
+    padding: '8px',
+  },
+  tableRow: {
+    transition: 'background-color 0.15s ease',
+    ':hover': {
+      backgroundColor: 'var(--lg-bg-interactive-hover)',
+    },
   },
 })
 
@@ -130,7 +153,7 @@ export default function AlistBrowser() {
             setPath(parent)
           }}
         />
-        <Input value={path} readOnly style={{ flexGrow: 1 }} />
+        <Input value={path} readOnly className={styles.pathInput} style={{ flexGrow: 1 }} />
         <Button
           icon={<ArrowSync24Regular />}
           size="small"
@@ -160,6 +183,7 @@ export default function AlistBrowser() {
       {loading ? (
         <Spinner label="加载中..." />
       ) : (
+        <div className={styles.tableCard}>
         <Table>
           <TableHeader>
             <TableRow>
@@ -172,6 +196,7 @@ export default function AlistBrowser() {
             {entries.map((entry) => (
               <TableRow
                 key={entry.path}
+                className={styles.tableRow}
                 onClick={() => {
                   if (entry.is_dir) {
                     setPath(entry.path)
@@ -198,6 +223,7 @@ export default function AlistBrowser() {
             ))}
           </TableBody>
         </Table>
+        </div>
       )}
     </div>
   )

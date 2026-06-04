@@ -23,7 +23,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
 
-// ==================== Fluent Design v9 极简精致样式系统 ====================
+// ==================== Liquid Glass 玻璃侧边栏样式系统 ====================
 const useStyles = makeStyles({
   root: {
     display: 'flex',
@@ -31,29 +31,27 @@ const useStyles = makeStyles({
     width: '100vw',
     overflow: 'hidden',
   },
-  // 侧边栏容器：支持宽度平滑动效与磨砂微透明感
+  // 侧边栏容器：液态玻璃工具栏，宽度平滑动效 + 毛玻璃模糊
   sidebar: {
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: tokens.colorNeutralBackground3,
-    ...shorthands.borderRight('1px', 'solid', tokens.colorNeutralStroke3),
+    backgroundColor: 'var(--lg-bg-toolbar)',
+    ...shorthands.borderRight('1px', 'solid', 'var(--lg-border-subtle)'),
     paddingTop: '8px',
     paddingBottom: '8px',
     paddingLeft: '0',
     paddingRight: '0',
     flexShrink: 0,
-    // 采用 Fluent 标准动力学缓动曲线以带来丝滑的展开折叠体验
-    transition: 'width 250ms cubic-bezier(0.1, 0.9, 0.2, 1)',
+    transition: 'width var(--lg-duration-normal) var(--lg-easing-smooth)',
     width: '56px',
     boxSizing: 'border-box',
-    // 亚克力/玻璃质感：半透明背景 + 毛玻璃模糊
-    backdropFilter: 'blur(20px) saturate(180%)',
-    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+    backdropFilter: 'blur(var(--lg-blur-lg)) saturate(var(--lg-saturate))',
+    WebkitBackdropFilter: 'blur(var(--lg-blur-lg)) saturate(var(--lg-saturate))',
   },
   sidebarExpanded: {
     width: '240px',
   },
-  // WinUI 3 经典的置顶 Header 区域（折叠按钮 + 标题并排）
+  // 置顶 Header 区域（折叠按钮 + 标题并排）
   sidebarHeader: {
     display: 'flex',
     alignItems: 'center',
@@ -68,7 +66,7 @@ const useStyles = makeStyles({
   appTitle: {
     fontSize: tokens.fontSizeBase300,
     fontWeight: tokens.fontWeightSemibold,
-    color: tokens.colorNeutralForeground1,
+    color: 'var(--lg-text-primary)',
     whiteSpace: 'nowrap',
     textOverflow: 'ellipsis',
     overflow: 'hidden',
@@ -80,9 +78,9 @@ const useStyles = makeStyles({
     },
     animationDuration: '250ms',
     animationFillMode: 'forwards',
-    animationTimingFunction: 'cubic-bezier(0.1, 0.9, 0.2, 1)',
+    animationTimingFunction: 'var(--lg-easing-smooth)',
   },
-  // 导航列表：左右预留 10px 间隙，与置顶折叠按钮保持绝对垂直对齐
+  // 导航列表
   navList: {
     display: 'flex',
     flexDirection: 'column',
@@ -104,13 +102,13 @@ const useStyles = makeStyles({
   // 细分割线
   divider: {
     height: '1px',
-    backgroundColor: tokens.colorNeutralStroke3,
+    backgroundColor: 'var(--lg-border-color)',
     marginTop: '6px',
     marginBottom: '6px',
     marginLeft: '12px',
     marginRight: '12px',
   },
-  // 导航项按钮基础样式：提供 200ms 圆润 hover 过渡
+  // 导航项按钮：玻璃交互按钮
   navBtn: {
     display: 'flex',
     alignItems: 'center',
@@ -119,14 +117,15 @@ const useStyles = makeStyles({
     width: '100%',
     minWidth: '36px',
     padding: '0',
-    borderRadius: tokens.borderRadiusMedium,
+    borderRadius: 'var(--lg-radius-md)',
     position: 'relative',
     overflow: 'hidden',
-    color: tokens.colorNeutralForeground2,
-    transition: 'all 200ms ease',
+    color: 'var(--lg-text-secondary)',
+    backgroundColor: 'transparent',
+    transition: 'all var(--lg-duration-fast) ease',
     '&:hover': {
-      backgroundColor: tokens.colorNeutralBackground3Hover,
-      color: tokens.colorNeutralForeground2Hover,
+      backgroundColor: 'var(--lg-bg-interactive-hover)',
+      color: 'var(--lg-text-primary)',
     },
   },
   navBtnExpanded: {
@@ -137,11 +136,11 @@ const useStyles = makeStyles({
   },
   // 选中态按钮：背景变浅，颜色变主题色，并激活精致小指示条的竖向拉伸动画
   navBtnSelected: {
-    backgroundColor: tokens.colorNeutralBackground1,
-    color: tokens.colorBrandForeground1,
+    backgroundColor: 'var(--lg-bg-interactive)',
+    color: 'var(--lg-brand)',
     fontWeight: tokens.fontWeightSemibold,
     '&:hover': {
-      backgroundColor: tokens.colorNeutralBackground1Hover,
+      backgroundColor: 'var(--lg-bg-interactive-hover)',
     },
     // 精致的 3D 圆角选中指示器，提供竖向微动效以增加愉悦感
     '&::before': {
@@ -151,15 +150,15 @@ const useStyles = makeStyles({
       top: '10px', // 配合 36px 高度的按钮，上下各保留 10px，生成 16px 高的精致微竖线条
       bottom: '10px',
       width: '3px',
-      borderRadius: tokens.borderRadiusCircular,
-      backgroundColor: tokens.colorBrandStroke1,
+      borderRadius: '999px',
+      backgroundColor: 'var(--lg-brand)',
       transformOrigin: 'center',
       animationName: {
         from: { transform: 'scaleY(0.3)', opacity: 0 },
         to: { transform: 'scaleY(1)', opacity: 1 },
       },
       animationDuration: '220ms',
-      animationTimingFunction: 'cubic-bezier(0.1, 0.9, 0.2, 1)',
+      animationTimingFunction: 'var(--lg-easing-smooth)',
     },
   },
   navLabel: {
@@ -173,14 +172,15 @@ const useStyles = makeStyles({
     minWidth: '36px',
     padding: '0',
     flexShrink: 0,
-    borderRadius: tokens.borderRadiusMedium,
-    color: tokens.colorNeutralForeground2,
+    borderRadius: 'var(--lg-radius-md)',
+    color: 'var(--lg-text-secondary)',
+    backgroundColor: 'transparent',
     '&:hover': {
-      backgroundColor: tokens.colorNeutralBackground3Hover,
-      color: tokens.colorNeutralForeground2Hover,
+      backgroundColor: 'var(--lg-bg-interactive-hover)',
+      color: 'var(--lg-text-primary)',
     },
   },
-  // 右侧主内容区域
+  // 右侧主内容区域：使用半透明背景让底层渐变透出
   content: {
     flexGrow: 1,
     overflow: 'auto',
@@ -188,7 +188,7 @@ const useStyles = makeStyles({
     '::-webkit-scrollbar': {
       display: 'none',
     },
-    backgroundColor: tokens.colorNeutralBackground2,
+    backgroundColor: 'transparent',
   },
 })
 

@@ -37,10 +37,19 @@ export default function BackupDialog({ open, gameName, onClose, onConfirm }: Bac
 
   return (
     <Dialog open={open} onOpenChange={(_, data) => !data.open && onClose()}>
-      <DialogSurface>
+      <DialogSurface
+        style={{
+          backgroundColor: 'var(--lg-bg-elevated)',
+          backdropFilter: 'blur(var(--lg-blur-lg)) saturate(var(--lg-saturate))',
+          WebkitBackdropFilter: 'blur(var(--lg-blur-lg)) saturate(var(--lg-saturate))',
+          border: '1px solid var(--lg-border-color)',
+          borderRadius: 'var(--lg-radius-xl)',
+          boxShadow: 'var(--lg-shadow-high)',
+        }}
+      >
         <DialogBody>
-          <DialogTitle>备份确认 — {gameName}</DialogTitle>
-          <DialogContent>
+          <DialogTitle style={{ color: 'var(--lg-text-primary)' }}>备份确认 — {gameName}</DialogTitle>
+          <DialogContent style={{ color: 'var(--lg-text-primary)' }}>
             <Label>选择备份策略</Label>
             <RadioGroup
               value={type}
