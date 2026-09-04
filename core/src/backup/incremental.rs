@@ -85,6 +85,7 @@ pub async fn perform_incremental_backup(
                     let _ = backend.mkdir(&remote_parent).await;
                     // 调用统一的 Trait 抽象方法上传增量变更物理文件
                     backend.upload_file(path.to_str().unwrap(), &remote_path).await?;
+                    crate::storage::persist_backend_session(app, &backend);
                 }
                 new_files.push(FileEntry {
                     relative_path: rel_path.clone(),

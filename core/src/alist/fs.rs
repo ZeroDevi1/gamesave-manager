@@ -1,7 +1,10 @@
 // alist/fs.rs - Alist 文件系统操作（目录列表、上传、删除、创建目录）
 use super::types::{AlistApiResponse, FileEntry, ListDirRequest, MkdirRequest};
+use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use reqwest;
+use serde::Deserialize;
 use std::path::Path;
+use std::time::Duration;
 
 /// 列出 Alist 目录内容
 pub async fn list_dir(url: &str, token: &str, path: &str) -> anyhow::Result<Vec<FileEntry>> {
@@ -24,6 +27,14 @@ pub async fn list_dir(url: &str, token: &str, path: &str) -> anyhow::Result<Vec<
     let status = resp.status();
     let err_text = resp.text().await.unwrap_or_default();
 
+    if status.as_u16() == 401 || status.as_u16() == 403 {
+        anyhow::bail!(
+            "AUTH_EXPIRED: 列出目录失败 (HTTP {}): {}",
+            status,
+            if err_text.len() > 150 { format!("{}...", &err_text[..150]) } else { err_text }
+        );
+    }
+
     if !status.is_success() {
         anyhow::bail!(
             "中转网关响应非预期 (HTTP {}): {}。请检查您的网盘授权是否被限制，或 Token 是否已失效。",
@@ -38,6 +49,9 @@ pub async fn list_dir(url: &str, token: &str, path: &str) -> anyhow::Result<Vec<
             e,
             if err_text.len() > 150 { format!("{}...", &err_text[..150]) } else { err_text }
         ))?;
+    if api_resp.code == 401 || api_resp.code == 403 {
+        anyhow::bail!("AUTH_EXPIRED: 列出目录失败: {}", api_resp.message);
+    }
     if api_resp.code != 200 {
         anyhow::bail!("列出目录失败: {}", api_resp.message);
     }
@@ -171,30 +185,173 @@ pub async fn mkdir(url: &str, token: &str, path: &str) -> anyhow::Result<()> {
 
     Ok(())
 }
-/// 从 Alist 下载文件到本地路径
-pub async fn download_file(url: &str, token: &str, remote_path: &str, local_path: &str) -> anyhow::Result<()> {
-    let client = reqwest::Client::new();
-    let download_url = format!(
-        "{}/d{}",
-        url.trim_end_matches('/'),
-        remote_path
-    );
-    let resp = client
-        .get(&download_url)
+/// 判断错误是否为 Alist/OpenList 登录态失效，供上层重新 login 后重试。
+pub fn is_auth_failure(err: &anyhow::Error) -> bool {
+    let s = err.to_string();
+    let lower = s.to_lowercase();
+    s.contains("AUTH_EXPIRED")
+        || lower.contains("http 401")
+        || lower.contains("unauthorized")
+        || lower.contains("guest user is disabled")
+        || lower.contains("password has been changed")
+}
+
+#[derive(Debug, Deserialize)]
+struct FsLinkData {
+    url: String,
+    #[serde(default)]
+    header: serde_json::Value,
+}
+
+fn encode_fs_path(path: &str) -> String {
+    path.split('/')
+        .map(|seg| urlencoding::encode(seg).into_owned())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// 通过 OpenList/Alist API 解析真实下载地址。
+///
+/// `/d/` 直链走签名中间件，不认 JWT；自建实例开启 `sign_all` 时直接 GET `/d/path`
+/// 会返回 HTTP 401。正确路径是 `/api/fs/link`（含上游 Cookie）或 `/api/fs/get` 的 `raw_url`。
+async fn resolve_download_source(
+    client: &reqwest::Client,
+    base: &str,
+    token: &str,
+    remote_path: &str,
+) -> anyhow::Result<(String, HeaderMap)> {
+    let link_resp = client
+        .post(format!("{}/api/fs/link", base))
         .header("Authorization", token)
+        .json(&serde_json::json!({ "path": remote_path }))
+        .send()
+        .await;
+
+    if let Ok(resp) = link_resp {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if status.as_u16() == 401 || status.as_u16() == 403 {
+            anyhow::bail!("AUTH_EXPIRED: HTTP {}", status);
+        }
+        if status.as_u16() != 404 {
+            if let Ok(api) = serde_json::from_str::<AlistApiResponse<FsLinkData>>(&text) {
+                if api.code == 401 || api.code == 403 {
+                    anyhow::bail!("AUTH_EXPIRED: {}", api.message);
+                }
+                if api.code == 200 {
+                    if let Some(data) = api.data {
+                        if !data.url.trim().is_empty() {
+                            let headers = crate::utils::http::parse_header_map(&data.header);
+                            log::info!("[Alist] 使用 /api/fs/link 下载: {}", data.url);
+                            return Ok((data.url, headers));
+                        }
+                    }
+                } else {
+                    log::warn!(
+                        "[Alist] /api/fs/link 未返回可用直链 (code={}): {}",
+                        api.code,
+                        api.message
+                    );
+                }
+            } else {
+                log::warn!(
+                    "[Alist] /api/fs/link 响应无法解析 (HTTP {}): {}",
+                    status,
+                    &text[..text.len().min(200)]
+                );
+            }
+        }
+    }
+
+    let resp = client
+        .post(format!("{}/api/fs/get", base))
+        .header("Authorization", token)
+        .json(&serde_json::json!({
+            "path": remote_path,
+            "password": "",
+        }))
         .send()
         .await?;
-
-    if !resp.status().is_success() {
-        anyhow::bail!("下载备份文件失败: HTTP {}", resp.status());
+    let status = resp.status();
+    let text = resp.text().await.unwrap_or_default();
+    if status.as_u16() == 401 || status.as_u16() == 403 {
+        anyhow::bail!("AUTH_EXPIRED: HTTP {}", status);
+    }
+    let api: AlistApiResponse<serde_json::Value> = serde_json::from_str(&text).map_err(|e| {
+        anyhow::anyhow!(
+            "解析 /api/fs/get 失败 ({}): {}",
+            e,
+            &text[..text.len().min(200)]
+        )
+    })?;
+    if api.code == 401 || api.code == 403 {
+        anyhow::bail!("AUTH_EXPIRED: {}", api.message);
+    }
+    if api.code != 200 {
+        anyhow::bail!("获取下载地址失败: {}", api.message);
+    }
+    let data = api.data.unwrap_or(serde_json::Value::Null);
+    if let Some(raw) = data
+        .get("raw_url")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
+        let headers = crate::utils::http::parse_header_map(
+            data.get("header").unwrap_or(&serde_json::Value::Null),
+        );
+        log::info!("[Alist] 使用 /api/fs/get raw_url 下载: {}", raw);
+        return Ok((raw.to_string(), headers));
     }
 
-    let bytes = resp.bytes().await?;
-    if let Some(parent) = Path::new(local_path).parent() {
-        std::fs::create_dir_all(parent)?;
+    let sign = data.get("sign").and_then(|v| v.as_str()).unwrap_or("");
+    let abs_path = if remote_path.starts_with('/') {
+        remote_path.to_string()
+    } else {
+        format!("/{}", remote_path)
+    };
+    if !sign.is_empty() {
+        let fallback = format!("{}/p{}?sign={}", base, encode_fs_path(&abs_path), sign);
+        log::info!("[Alist] 使用签名代理地址下载: {}", fallback);
+        return Ok((fallback, HeaderMap::new()));
     }
-    std::fs::write(local_path, &bytes)?;
-    Ok(())
+
+    anyhow::bail!(
+        "OpenList 未返回 raw_url 或 sign，无法下载。请确认账号对该路径有读取权限。"
+    )
+}
+
+/// 从 Alist/OpenList 下载文件到本地路径
+pub async fn download_file(
+    url: &str,
+    token: &str,
+    remote_path: &str,
+    local_path: &str,
+) -> anyhow::Result<()> {
+    let base = url.trim_end_matches('/');
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(60))
+        .build()?;
+
+    let (download_url, mut headers) =
+        resolve_download_source(&client, base, token, remote_path).await?;
+
+    // 访问 OpenList 自身的 /p/、/d/ 时代入 JWT；上游 CDN 不会收到（跨域重定向会剥离 Authorization）
+    if download_url.starts_with(base) {
+        if let Ok(v) = HeaderValue::from_str(token) {
+            headers.insert(AUTHORIZATION, v);
+        }
+    }
+
+    crate::utils::http::download_url_to_file(&download_url, headers, local_path)
+        .await
+        .map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("401") || msg.to_lowercase().contains("unauthorized") {
+                anyhow::anyhow!("AUTH_EXPIRED: {}", msg)
+            } else {
+                anyhow::anyhow!("下载备份文件失败: {}", msg)
+            }
+        })
 }
 /// 从 Alist 删除文件或目录
 ///

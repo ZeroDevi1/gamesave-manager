@@ -69,7 +69,11 @@ async fn perform_restore_from_remote_zip(
     let backend = crate::storage::get_storage_backend(&config)?;
     
     // 调用统一的 Trait 抽象方法从云端下载 ZIP 物理备份到本地临时路径
-    backend.download_file(remote_zip_path, local_zip.to_str().unwrap()).await?;
+    let download_result = backend
+        .download_file(remote_zip_path, local_zip.to_str().unwrap())
+        .await;
+    crate::storage::persist_backend_session(app, &backend);
+    download_result?;
 
     let ts_str = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
 

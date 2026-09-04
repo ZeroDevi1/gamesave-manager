@@ -182,6 +182,7 @@ pub mod commands {
         let entries = match backend.list_dir(&remote_dir).await {
             Ok(entries) => entries,
             Err(e) => {
+                crate::storage::persist_backend_session(&app, &backend);
                 let msg = e.to_string().to_lowercase();
                 // 兼容各云存储驱动抛出的“未找到/路径不存在”错误，静默返回空列表
                 if msg.contains("not found") || msg.contains("object not found") || msg.contains("路径不存在") || msg.contains("404") {
@@ -190,6 +191,7 @@ pub mod commands {
                 return Err(e.to_string());
             }
         };
+        crate::storage::persist_backend_session(&app, &backend);
 
         // 只保留 ZIP 文件
         let backups: Vec<RemoteBackupEntry> = entries

@@ -20,9 +20,13 @@ import {
   quarkTvGetQrCode,
   quarkTvPollQr,
   quarkTvExchange,
+  getAppVersion,
+  checkForUpdates,
+  openReleasePage,
 } from '../services/tauri'
-import type { StorageConfig } from '../services/tauri'
+import type { StorageConfig, UpdateCheckResult } from '../services/tauri'
 import { useAppStore } from '../store/appStore'
+import { ArrowClockwise24Regular } from '@fluentui/react-icons'
 import StorageBrowser from './StorageBrowser'
 
 const useStyles = makeStyles({
@@ -112,6 +116,9 @@ export default function SettingsPanel() {
   const [tvQrOpen, setTvQrOpen] = useState(false)
   const [tvQrImage, setTvQrImage] = useState('')
   const [tvQrPolling, setTvQrPolling] = useState(false)
+  const [appVersion, setAppVersion] = useState('')
+  const [updateChecking, setUpdateChecking] = useState(false)
+  const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null)
 
   // 初始化拉取全局配置文件并渲染表单
   useEffect(() => {
@@ -176,6 +183,10 @@ export default function SettingsPanel() {
         setAlistProvider(config.alist.provider)
       }
     })
+  }, [])
+
+  useEffect(() => {
+    getAppVersion().then(setAppVersion).catch(() => setAppVersion(''))
   }, [])
 
   // 构造当前的临时表单配置对象
@@ -488,6 +499,21 @@ export default function SettingsPanel() {
       addToast(err instanceof Error ? err.message : '保存失败', 'error')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleCheckUpdate = async () => {
+    setUpdateChecking(true)
+    try {
+      const result = await checkForUpdates()
+      setUpdateResult(result)
+      addToast(result.message, result.has_update ? 'info' : 'success')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setUpdateResult(null)
+      addToast(`检查更新失败: ${msg}`, 'error')
+    } finally {
+      setUpdateChecking(false)
     }
   }
 
@@ -832,6 +858,47 @@ export default function SettingsPanel() {
         <div className={styles.buttonRow}>
           <Button appearance="primary" onClick={handleSave} disabled={saving}>
             {saving ? <Spinner size="tiny" /> : '保存设置'}
+          </Button>
+        </div>
+      </div>
+
+      <div className={styles.section}>
+        <div className={styles.sectionTitle}>关于与更新</div>
+        <div className={styles.row}>
+          <Label>当前版本</Label>
+          <div style={{ color: 'var(--lg-text-primary)' }}>
+            GameSave Manager {appVersion ? `v${appVersion}` : ''}
+          </div>
+        </div>
+        {updateResult && (
+          <MessageBar intent={updateResult.has_update ? 'warning' : 'success'}>
+            <MessageBarBody>
+              {updateResult.message}
+              {updateResult.latest_version && updateResult.has_update
+                ? `，可前往 GitHub 下载 v${updateResult.latest_version.replace(/^v/i, '')}。`
+                : ''}
+            </MessageBarBody>
+          </MessageBar>
+        )}
+        <div className={styles.buttonRow}>
+          <Button
+            appearance="primary"
+            icon={updateChecking ? <Spinner size="tiny" /> : <ArrowClockwise24Regular />}
+            onClick={handleCheckUpdate}
+            disabled={updateChecking}
+          >
+            {updateChecking ? '正在检查…' : '检查更新'}
+          </Button>
+          {updateResult?.has_update && (
+            <Button onClick={() => openReleasePage(updateResult.release_url)}>
+              打开发布页
+            </Button>
+          )}
+          <Button
+            appearance="subtle"
+            onClick={() => openReleasePage('https://github.com/ZeroDevi1/gamesave-manager')}
+          >
+            打开 GitHub
           </Button>
         </div>
       </div>

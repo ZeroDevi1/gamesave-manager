@@ -1,6 +1,6 @@
 [package]
 name = "gamesave-manager"
-version = "0.1.0"
+version = "1.1.0"
 description = "GameSave Manager - 游戏存档备份工具"
 authors = ["GameSave Manager Team"]
 license = "MIT"

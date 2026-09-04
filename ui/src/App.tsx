@@ -11,7 +11,7 @@ import GameDetailPage from './pages/GameDetailPage'
 import GameDbPage from './pages/GameDbPage'
 import SettingsPage from './pages/SettingsPage'
 import ToastContainer from './components/ToastContainer'
-import { loadConfig } from './services/tauri'
+import { loadConfig, checkForUpdates } from './services/tauri'
 import { useAppStore } from './store/appStore'
 
 /** 路由动画包装器：通过 location key 触发淡入+上移动效 */
@@ -30,7 +30,7 @@ function AnimatedRoutes() {
 }
 
 function App() {
-  const { fluentTheme, themeMode, setThemeMode } = useAppStore()
+  const { fluentTheme, themeMode, setThemeMode, addToast } = useAppStore()
   const [loading, setLoading] = useState(true)
 
   // 初始化时读取用户设置的主题模式
@@ -45,6 +45,18 @@ function App() {
       })
       .finally(() => setLoading(false))
   }, [setThemeMode])
+
+  useEffect(() => {
+    checkForUpdates()
+      .then((result) => {
+        if (result.has_update) {
+          addToast(result.message + '，可在设置中查看', 'info')
+        }
+      })
+      .catch(() => {
+        // 启动时检查失败不打扰用户
+      })
+  }, [addToast])
 
   // 将 React 层的主题模式同步到 <html data-theme>，使 Liquid Glass CSS 令牌生效
   useEffect(() => {

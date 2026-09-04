@@ -405,6 +405,30 @@ export function storageRefreshAllTokens(): Promise<boolean> {
   return invoke('storage_refresh_all_tokens')
 }
 
+// ==================== 应用更新 ====================
+
+export interface UpdateCheckResult {
+  current_version: string
+  latest_version?: string | null
+  has_update: boolean
+  release_url: string
+  release_notes?: string | null
+  published_at?: string | null
+  message: string
+}
+
+export function getAppVersion(): Promise<string> {
+  return invoke('get_app_version')
+}
+
+export function checkForUpdates(): Promise<UpdateCheckResult> {
+  return invoke('check_for_updates')
+}
+
+export function openReleasePage(url: string): Promise<void> {
+  return invoke('open_release_page', { url })
+}
+
 // ==================== 自定义封面与物理图标提取 ====================
 
 export interface ExeIconResult {

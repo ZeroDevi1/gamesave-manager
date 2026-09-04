@@ -6,6 +6,7 @@ pub mod backup;
 pub mod config;
 pub mod game;
 pub mod storage;
+pub mod update;
 pub mod utils;
 
 use tauri::Manager;
@@ -83,6 +84,10 @@ pub fn run() {
             // 配置相关命令
             config::commands::load_config,
             config::commands::save_config,
+            // 应用更新
+            update::commands::get_app_version,
+            update::commands::check_for_updates,
+            update::commands::open_release_page,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

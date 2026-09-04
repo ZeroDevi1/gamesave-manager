@@ -1,5 +1,6 @@
 // storage/mod.rs - 统一存储后端抽象层与多路适配器实现
 use crate::config::model::{AlistConfig, StorageConfig, WebdavConfig, S3Config};
+use reqwest::header::{HeaderMap, HeaderValue, COOKIE, REFERER, USER_AGENT};
 use reqwest;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -1482,30 +1483,33 @@ impl NetdiskBackend {
 
             let download_url = self.quark_get_download_url(&file_fid).await?;
 
-            // 下载文件内容
-            // 提取 Cookie 字符串（在 .await 前释放 MutexGuard）
-            let cookie_for_dl = parse_quark_cookie(&self.quark_cookie.lock().unwrap());
-            let resp = reqwest::Client::new()
-                .get(&download_url)
-                .header("Cookie", &cookie_for_dl)
-                .header("User-Agent", QUARK_UA)
-                .header("Referer", QUARK_REFERER)
-                .send()
-                .await?;
+            let cookie_for_dl = parse_quark_cookie(&self.quark_cookie.lock().unwrap())
+                .replace(['\r', '\n'], " ");
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                COOKIE,
+                HeaderValue::from_str(&cookie_for_dl)
+                    .map_err(|e| anyhow::anyhow!("夸克 Cookie 无法写入请求头: {}", e))?,
+            );
+            headers.insert(USER_AGENT, HeaderValue::from_static(QUARK_UA));
+            headers.insert(REFERER, HeaderValue::from_static(QUARK_REFERER));
 
-            // 从下载响应中提取并更新 __puus/__pus Cookie
-            self.update_quark_cookies_from_response(&resp);
-
-            let status = resp.status();
-            if !status.is_success() {
-                anyhow::bail!("夸克网盘下载失败 (HTTP {}): {}", status, resp.text().await.unwrap_or_default());
-            }
-
-            if let Some(parent) = Path::new(local_path).parent() {
-                tokio::fs::create_dir_all(parent).await?;
-            }
-            let bytes = resp.bytes().await?;
-            tokio::fs::write(local_path, &bytes).await?;
+            crate::utils::http::download_url_to_file(&download_url, headers, local_path)
+                .await
+                .map_err(|e| {
+                    let msg = e.to_string();
+                    if msg.contains("auth miss")
+                        || msg.contains("RequestDeniedByCallback")
+                        || msg.contains("HTTP 403")
+                    {
+                        anyhow::anyhow!(
+                            "夸克网盘下载失败: 直链节点拒绝了未携带登录态的请求。请重试；若仍失败，请重新从 pan.quark.cn 复制完整 Cookie。原始错误: {}",
+                            msg
+                        )
+                    } else {
+                        anyhow::anyhow!("夸克网盘下载失败: {}", msg)
+                    }
+                })?;
             return Ok(());
         }
 
@@ -1747,21 +1751,53 @@ impl NetdiskBackend {
 /// 包装 Alist 既有驱动逻辑的适配器
 pub struct AlistBackend {
     config: AlistConfig,
+    live_token: Mutex<Option<String>>,
 }
 
 impl AlistBackend {
     /// 构造全新的 Alist / OpenList 统一物理存取适配器
     pub fn new(config: AlistConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            live_token: Mutex::new(None),
+        }
+    }
+
+    /// 若本次会话中重新登录拿到了新 Token，返回其值供持久化。
+    pub fn take_live_token(&self) -> Option<String> {
+        self.live_token.lock().unwrap().clone()
+    }
+
+    async fn relogin(&self) -> anyhow::Result<String> {
+        let pwd = self
+            .config
+            .password
+            .as_ref()
+            .filter(|p| !p.trim().is_empty())
+            .ok_or_else(|| {
+                anyhow::anyhow!("Alist/OpenList 登录已失效，且未保存密码，请到设置页重新登录")
+            })?;
+        log::info!("[Alist] Token 失效，正在使用已保存密码重新登录...");
+        let login_res =
+            crate::alist::auth::login(&self.config.base_url, &self.config.username, pwd).await?;
+        *self.live_token.lock().unwrap() = Some(login_res.token.clone());
+        Ok(login_res.token)
     }
 
     /// 获取当前的有效 Token，若本地 Token 缺失但有密码，则在底层发起自动登录换取临时 Token。
     ///
     /// # 核心设计与规避机制
-    /// 1. 优先使用本地持久化存储的授权 Token (令牌)；
-    /// 2. 弱 Token 缺失或被清空，但 `password` 字段非空，则利用自建密码自动调用 `/api/auth/login` 接口；
-    /// 3. 如果两者均为空，则抛出详尽的配置缺失报错，指引用户到设置页填写。
+    /// 1. 优先使用本次会话中重新登录得到的 Token；
+    /// 2. 其次使用本地持久化存储的授权 Token；
+    /// 3. 若 Token 缺失或被清空，但 `password` 字段非空，则利用自建密码自动调用 `/api/auth/login`；
+    /// 4. 如果两者均为空，则抛出详尽的配置缺失报错，指引用户到设置页填写。
     async fn get_effective_token(&self) -> anyhow::Result<String> {
+        if let Some(tok) = self.live_token.lock().unwrap().clone() {
+            if !tok.trim().is_empty() {
+                return Ok(tok);
+            }
+        }
+
         if let Some(ref tok) = self.config.token {
             if !tok.trim().is_empty() {
                 return Ok(tok.clone());
@@ -1776,6 +1812,7 @@ impl AlistBackend {
                     &self.config.username,
                     pwd
                 ).await?;
+                *self.live_token.lock().unwrap() = Some(login_res.token.clone());
                 return Ok(login_res.token);
             }
         }
@@ -1788,21 +1825,49 @@ impl AlistBackend {
     /// 在 Alist 云端物理系统上创建目录
     pub async fn mkdir(&self, path: &str) -> anyhow::Result<()> {
         let token = self.get_effective_token().await?;
-        crate::alist::fs::mkdir(&self.config.base_url, &token, path).await
+        match crate::alist::fs::mkdir(&self.config.base_url, &token, path).await {
+            Ok(()) => Ok(()),
+            Err(e) if crate::alist::fs::is_auth_failure(&e) => {
+                let token = self.relogin().await?;
+                crate::alist::fs::mkdir(&self.config.base_url, &token, path).await
+            }
+            Err(e) => Err(e),
+        }
     }
 
     async fn upload_file(&self, local_path: &str, remote_path: &str) -> anyhow::Result<()> {
         let token = self.get_effective_token().await?;
-        crate::alist::fs::upload_file(&self.config.base_url, &token, local_path, remote_path).await
+        match crate::alist::fs::upload_file(&self.config.base_url, &token, local_path, remote_path).await {
+            Ok(()) => Ok(()),
+            Err(e) if crate::alist::fs::is_auth_failure(&e) => {
+                let token = self.relogin().await?;
+                crate::alist::fs::upload_file(&self.config.base_url, &token, local_path, remote_path).await
+            }
+            Err(e) => Err(e),
+        }
     }
 
     async fn download_file(&self, remote_path: &str, local_path: &str) -> anyhow::Result<()> {
         let token = self.get_effective_token().await?;
-        crate::alist::fs::download_file(&self.config.base_url, &token, remote_path, local_path).await
+        match crate::alist::fs::download_file(&self.config.base_url, &token, remote_path, local_path).await {
+            Ok(()) => Ok(()),
+            Err(e) if crate::alist::fs::is_auth_failure(&e) => {
+                let token = self.relogin().await?;
+                crate::alist::fs::download_file(&self.config.base_url, &token, remote_path, local_path).await
+            }
+            Err(e) => Err(e),
+        }
     }
     async fn list_dir(&self, path: &str) -> anyhow::Result<Vec<RemoteFileEntry>> {
         let token = self.get_effective_token().await?;
-        let raw_entries = crate::alist::fs::list_dir(&self.config.base_url, &token, path).await?;
+        let raw_entries = match crate::alist::fs::list_dir(&self.config.base_url, &token, path).await {
+            Ok(entries) => entries,
+            Err(e) if crate::alist::fs::is_auth_failure(&e) => {
+                let token = self.relogin().await?;
+                crate::alist::fs::list_dir(&self.config.base_url, &token, path).await?
+            }
+            Err(e) => return Err(e),
+        };
         // 转换 Alist 原生数据实体为系统通用抽象实体
         let converted = raw_entries
             .into_iter()
@@ -1818,7 +1883,14 @@ impl AlistBackend {
     }
     async fn delete(&self, remote_path: &str) -> anyhow::Result<()> {
         let token = self.get_effective_token().await?;
-        crate::alist::fs::remove(&self.config.base_url, &token, remote_path).await
+        match crate::alist::fs::remove(&self.config.base_url, &token, remote_path).await {
+            Ok(()) => Ok(()),
+            Err(e) if crate::alist::fs::is_auth_failure(&e) => {
+                let token = self.relogin().await?;
+                crate::alist::fs::remove(&self.config.base_url, &token, remote_path).await
+            }
+            Err(e) => Err(e),
+        }
     }
 }
 
@@ -2124,6 +2196,64 @@ pub fn get_storage_backend(config: &crate::config::model::AppConfig) -> anyhow::
     }
 }
 
+/// 将本次会话中刷新过的夸克 Cookie / Alist Token 写回配置，避免下次启动仍用过期凭证。
+pub fn persist_backend_session(app: &tauri::AppHandle, backend: &StorageBackend) {
+    match backend {
+        StorageBackend::Netdisk(b) => {
+            if !b.config.driver.contains("quark") {
+                return;
+            }
+            let cookie = b.take_quark_cookie();
+            if cookie.trim().is_empty() {
+                return;
+            }
+            let mut cfg = match crate::config::load_config(app) {
+                Ok(c) => c,
+                Err(e) => {
+                    log::warn!("[storage] 回写夸克 Cookie 时读取配置失败: {}", e);
+                    return;
+                }
+            };
+            if let Some(StorageConfig::Netdisk(ref mut netdisk)) = cfg.storage {
+                if netdisk.driver.contains("quark") && netdisk.token != cookie {
+                    netdisk.token = cookie;
+                    if let Err(e) = crate::config::save_config(app, &cfg) {
+                        log::warn!("[storage] 回写夸克 Cookie 失败: {}", e);
+                    } else {
+                        log::info!("[storage] 已持久化更新后的夸克 Cookie");
+                    }
+                }
+            }
+        }
+        StorageBackend::Alist(b) => {
+            let Some(token) = b.take_live_token() else {
+                return;
+            };
+            if token.trim().is_empty() {
+                return;
+            }
+            let mut cfg = match crate::config::load_config(app) {
+                Ok(c) => c,
+                Err(e) => {
+                    log::warn!("[storage] 回写 Alist Token 时读取配置失败: {}", e);
+                    return;
+                }
+            };
+            if let Some(StorageConfig::Alist(ref mut alist)) = cfg.storage {
+                if alist.token.as_deref() != Some(token.as_str()) {
+                    alist.token = Some(token);
+                    if let Err(e) = crate::config::save_config(app, &cfg) {
+                        log::warn!("[storage] 回写 Alist Token 失败: {}", e);
+                    } else {
+                        log::info!("[storage] 已持久化重新登录后的 Alist Token");
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 /// 根据传入的临时/新配置，动态构建具体的 StorageBackend 存储分发变体（专用于连接性测试与联调向导）
 pub fn get_storage_backend_with_config(config: &StorageConfig) -> StorageBackend {
     match config {
@@ -2283,6 +2413,7 @@ pub mod commands {
         config: Option<StorageConfig>,
         path: String,
     ) -> Result<Vec<RemoteFileEntry>, String> {
+        let persist_session = config.is_none();
         let backend = if let Some(cfg) = config {
             get_storage_backend_with_config(&cfg)
         } else {
@@ -2290,7 +2421,11 @@ pub mod commands {
             get_storage_backend(&app_cfg).map_err(|e| e.to_string())?
         };
 
-        backend.list_dir(&path).await.map_err(|e| e.to_string())
+        let result = backend.list_dir(&path).await;
+        if persist_session {
+            persist_backend_session(&app, &backend);
+        }
+        result.map_err(|e| e.to_string())
     }
 
     /// 夸克 TV 扫码登录：获取二维码（返回 base64 PNG 图片数据）

@@ -114,6 +114,7 @@ pub async fn perform_full_backup(app: &AppHandle, game_id: &str) -> anyhow::Resu
     
     // 调用统一的 Trait 抽象方法将本地物理存档 ZIP 上传至云端
     backend.upload_file(zip_path.to_str().unwrap(), &remote_path).await?;
+    crate::storage::persist_backend_session(app, &backend);
 
     // 保存 manifest
     let manifest = BackupManifest {

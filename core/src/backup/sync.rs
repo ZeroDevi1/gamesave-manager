@@ -247,6 +247,8 @@ async fn pull_from_remote(
         }
     }
 
+    crate::storage::persist_backend_session(app, &backend);
+
     // 更新本地 manifest 以匹配远端状态
     let manifest = BackupManifest {
         game_id: game.id.clone(),
