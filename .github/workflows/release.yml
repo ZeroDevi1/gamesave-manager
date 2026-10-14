@@ -11,38 +11,33 @@ permissions:
 jobs:
   build:
     name: Build and Release (Windows)
-    runs-on: windows-latest
+    # MyGo 不需要 cgo，Linux runner 即可交叉编译 Windows 版本并用 NSIS 生成安装包
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Go
+        uses: actions/setup-go@v7
         with:
-          node-version: 20
+          go-version-file: go.mod
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --locked
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
 
       - name: Install frontend dependencies
-        run: cd ui && npm ci
+        run: bun install --frozen-lockfile
 
-      - name: Build Tauri application
-        run: cd core && cargo tauri build --ci
+      - name: Install NSIS
+        run: sudo apt-get update && sudo apt-get install -y nsis
+
+      - name: Build MyGo application
+        run: bun run build -- -platform windows/amd64
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            target/release/bundle/msi/*.msi
-            target/release/gamesave-manager.exe
+            build/windows-amd64/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

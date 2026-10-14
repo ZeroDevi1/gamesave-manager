@@ -1,5 +1,9 @@
 /target
 /node_modules
+/dist/
+/build/
+/.mygo/
+mygo_windows_*.syso
 *.log
 .DS_Store
 .idea
